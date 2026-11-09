@@ -1,0 +1,54 @@
+name: Publish full source
+
+# Builds the complete NYXGram source tree (Ghostgram 2a6b0827 + nyxgram2.patch from this repo)
+# and pushes it to the branch "full-source" of THIS repository. Run it by hand: Actions > Publish full source > Run workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      BASE_COMMIT: 2a6b08272b7da893f88986846022bafd0727df89
+    steps:
+      - name: Get this repository (the patch)
+        uses: actions/checkout@v4
+        with:
+          path: overlay
+
+      - name: Fetch Ghostgram and apply the patch
+        run: |
+          set -euo pipefail
+          git clone https://github.com/ichmagmaus111/ghostgram.git src
+          cd src
+          git checkout "$BASE_COMMIT"
+          git apply --whitespace=nowarn ../overlay/nyxgram2.patch
+          git config user.name "NYXGram"
+          git config user.email "nyx@users.noreply.github.com"
+          git add -A
+          git commit -q -m "NYXGram: patch applied on Ghostgram ${BASE_COMMIT:0:8}"
+          test -f NYXGram/scripts/nyx-setup.sh
+          test -f Ghostgram/Features/GhostMode/BUILD
+          echo "files: $(git ls-files | wc -l)"
+
+      - name: Push to branch full-source
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd src
+          URL="https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # First try with Ghostgram's history (keeps the authors' commits). GitHub may refuse history that
+          # touches workflow files; then fall back to one squashed commit (NOTICE keeps the attribution).
+          if git push --force "$URL" HEAD:refs/heads/full-source; then
+            echo "Pushed with history."
+          else
+            echo "History push refused, pushing one squashed commit."
+            git checkout -q --orphan squashed
+            git commit -q -m "NYXGram full source: Ghostgram ${BASE_COMMIT:0:8} (GPL-2.0, ichmagmaus111/ghostgram) + NYXGram patch"
+            git push --force "$URL" HEAD:refs/heads/full-source
+          fi
