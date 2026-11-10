@@ -113,7 +113,7 @@
   "voice.transcription.footerPremium": "You have Telegram Premium: voice and video messages are transcribed by Telegram's server. If Premium ends, transcription switches to Apple's recognition by itself.",
   "voice.transcription.header": "Transcription",
   "voice.transcription.keyword": "text",
-  "voice.transcription.notAuthorized": "Allow Ghostgram to use Speech Recognition in iOS Settings to transcribe voice messages.",
+  "voice.transcription.notAuthorized": "Allow NYXGram to use Speech Recognition in iOS Settings to transcribe voice messages.",
   "voice.transcription.wordBubbles": "Word bubbles",
   "voice.transcription.wordBubblesInfo": "Tap a word to play from there",
   "voice.unit.bits": "{value} bit",

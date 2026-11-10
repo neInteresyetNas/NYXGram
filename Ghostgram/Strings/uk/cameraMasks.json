@@ -417,7 +417,7 @@
   "cameraMasks.studio.error.asset": "Картинка маски пошкоджена або завелика",
   "cameraMasks.studio.error.emptyName": "Введіть назву маски",
   "cameraMasks.studio.error.notFound": "Маску не знайдено",
-  "cameraMasks.studio.error.package": "Це не файл маски Ghostgram",
+  "cameraMasks.studio.error.package": "Це не файл маски NYXGram",
   "cameraMasks.studio.error.read": "Не вдалося прочитати файл",
   "cameraMasks.studio.error.title": "Не вийшло",
   "cameraMasks.studio.error.version": "Маску створено в новішій версії (формат {version}). Оновіть застосунок.",

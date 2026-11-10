@@ -70,12 +70,6 @@ enum GGMessagesMigrations {
         legacy.removeLegacyKey("MiscSettings.initialized")
 
         // «Обходы ограничений» (behind the old master).
-        move(legacy, "MiscSettings.bypassCopyProtection", to: GGMessagesSettings.copyProtectionBypass, gatedBy: master)
-        move(legacy, "MiscSettings.addForwardAuthorAttribution", to: GGMessagesSettings.forwardAttribution, gatedBy: master)
-        move(legacy, "MiscSettings.disableViewOnceAutoDelete", to: GGMessagesSettings.keepSelfDestructingMedia, gatedBy: master)
-        move(legacy, "MiscSettings.bypassScreenshotProtection", to: GGMessagesSettings.screenshotBypass, gatedBy: master)
-        move(legacy, "MiscSettings.blockAds", to: GGMessagesSettings.blockAds, gatedBy: master)
-        move(legacy, "MiscSettings.bypassBotRestrictions", to: GGMessagesSettings.contentRestrictionsBypass, gatedBy: master)
         move(legacy, "MiscSettings.antiSpoiler", to: GGMessagesSettings.revealSpoilers, gatedBy: master)
 
         // Outgoing text.

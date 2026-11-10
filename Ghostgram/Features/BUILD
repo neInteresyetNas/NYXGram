@@ -30,6 +30,9 @@ swift_library(
         "//Ghostgram/Features/Extras:GGExtras",
         # W7-RD2: «Дата регистрации»
         "//Ghostgram/Features/RegDate:GGRegDate",
+        # NYXGram: Gifts Studio
+        "//Ghostgram/Features/GiftsStudio:GGGiftsStudio",
+        "//Ghostgram/Features/NYXToolkit:GGNYXToolkit",
     ],
     visibility = [
         "//visibility:public",

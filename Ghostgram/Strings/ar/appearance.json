@@ -57,7 +57,7 @@
   "appearance.font.customHeader": "خطوطك",
   "appearance.font.familiesFooter": "هذه الخطوط مضمّنة في iOS؛ لا يُنزَّل أي شيء. العيّنة على اليسار تعرض الخط كما يرسمه التطبيق. وحيث لا يحتوي الخط على الحروف السيريلية، تُرسم هذه الحروف بخط النظام.",
   "appearance.font.familiesHeader": "خطوط iOS",
-  "appearance.font.info": "خط التطبيق بالكامل. يُطبَّق بعد إعادة تشغيل Ghostgram.",
+  "appearance.font.info": "خط التطبيق بالكامل. يُطبَّق بعد إعادة تشغيل NYXGram.",
   "appearance.font.keywords": "خط محرف مستدير مذيل أحادي المسافة",
   "appearance.font.monospaced": "أحادي المسافة",
   "appearance.font.noCyrillic": "بدون حروف سيريلية",

@@ -15,6 +15,8 @@ import GGVless
 import GGProfileExport
 import GGExtras
 import GGRegDate
+import GGGiftsStudio
+import GGNYXToolkit
 
 /// Aggregator of the feature modules, called from `AppDelegate` (see FOUNDATION_SPEC §2):
 /// `GGCore.bootstrap` → `GGFeatures.registerAll()` → `GGCore.runGlobalMigrations()` →
@@ -31,15 +33,19 @@ public enum GGFeatures {
         GGAppearanceModule.register()
         GGInterfaceModule.register()
         GGVoiceModule.register()
-        GGCameraMasksModule.register()
+        // NYXGram: GGCameraMasksModule is not registered (see NYXGRAM_CHANGES.md).
         GGCallsMediaModule.register()
         GGSecurityModule.register()
-        GGNetworkSpoofModule.register()
-        GGVlessModule.register()
+        // NYXGram: GGNetworkSpoofModule is not registered (see NYXGRAM_CHANGES.md).
+        // NYXGram: GGVlessModule is not registered (see NYXGRAM_CHANGES.md).
         GGProfileExportModule.register()
         // W5-SG: Swiftgram-parity features.
         GGExtrasModule.register()
         // W7-RD2: «Дата регистрации».
-        GGRegDateModule.register()
+        // NYXGram: GGRegDateModule is not registered (see NYXGRAM_CHANGES.md).
+        // NYXGram: Gifts Studio (read-only catalog/collection, local layouts).
+        GGGiftsStudioModule.register()
+        // NYXGram: Toolkit (event log, filter rules, streamer masking tester).
+        GGNYXToolkitModule.register()
     }
 }

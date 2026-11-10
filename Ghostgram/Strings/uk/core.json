@@ -1,8 +1,8 @@
 {
-  "core.import.invalidFormat": "Це не файл налаштувань Ghostgram, або файл пошкоджено.",
-  "core.import.unsupportedVersion": "Файл створено новішою версією Ghostgram (формат {version}). Оновіть застосунок, щоб імпортувати його.",
+  "core.import.invalidFormat": "Це не файл налаштувань NYXGram, або файл пошкоджено.",
+  "core.import.unsupportedVersion": "Файл створено новішою версією NYXGram (формат {version}). Оновіть застосунок, щоб імпортувати його.",
   "core.language.followTelegram": "Як у Telegram",
   "core.languageNativeName": "Українська",
   "core.requiresRestart": "Потрібен перезапуск",
-  "core.requiresRestartFooter": "Зміна застосується після перезапуску Ghostgram."
+  "core.requiresRestartFooter": "Зміна застосується після перезапуску NYXGram."
 }

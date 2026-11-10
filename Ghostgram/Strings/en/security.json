@@ -6,7 +6,7 @@
   "security.accountSettings.copyConfirmText": "The per-account settings of «{name}» (ghost mode, exceptions, delayed sending, protected chats and so on) will replace this account's. Folders are not taken over: the other account has its own.",
   "security.accountSettings.copyConfirmTitle": "Take over settings?",
   "security.accountSettings.copyPickerTitle": "Take settings from",
-  "security.accountSettings.footer": "Ghost mode with its exceptions, delayed sending, protected chats, the secret folder and other chat lists are kept per account. Every other Ghostgram setting is shared by all accounts.",
+  "security.accountSettings.footer": "Ghost mode with its exceptions, delayed sending, protected chats, the secret folder and other chat lists are kept per account. Every other NYXGram setting is shared by all accounts.",
   "security.accountSettings.header": "Per-account settings",
   "security.accountSettings.keywords": "account configs settings profiles",
   "security.accountSettings.noOtherAccounts": "There are no other accounts",

@@ -235,12 +235,12 @@ public enum GGStrings {
                 return GGLocalization.shared.format("antiDelete.history.importDone", [("added", added), ("skipped", skipped)])
             }
 
-            /// This is not a Ghostgram history file, or it is damaged.
+            /// This is not a NYXGram history file, or it is damaged.
             public static var importInvalid: Swift.String {
                 return GGLocalization.shared.string("antiDelete.history.importInvalid")
             }
 
-            /// The file was made by a newer Ghostgram (format {version}). Update the app.
+            /// The file was made by a newer NYXGram (format {version}). Update the app.
             public static func importNewer(version: Swift.String) -> Swift.String {
                 return GGLocalization.shared.format("antiDelete.history.importNewer", [("version", version)])
             }
@@ -928,7 +928,7 @@ public enum GGStrings {
                 return GGLocalization.shared.string("appearance.font.familiesHeader")
             }
 
-            /// The font of the whole app. Applies after Ghostgram restarts.
+            /// The font of the whole app. Applies after NYXGram restarts.
             public static var info: Swift.String {
                 return GGLocalization.shared.string("appearance.font.info")
             }
@@ -4261,7 +4261,7 @@ public enum GGStrings {
                     return GGLocalization.shared.string("cameraMasks.studio.error.notFound")
                 }
 
-                /// This is not a Ghostgram mask file
+                /// This is not a NYXGram mask file
                 public static var package: Swift.String {
                     return GGLocalization.shared.string("cameraMasks.studio.error.package")
                 }
@@ -4646,7 +4646,7 @@ public enum GGStrings {
         }
 
         public enum Output {
-            /// Data exported from Telegram with Ghostgram.
+            /// Data exported from Telegram with NYXGram.
             public static var about: Swift.String {
                 return GGLocalization.shared.string("chatExport.output.about")
             }
@@ -5331,18 +5331,18 @@ public enum GGStrings {
             return GGLocalization.shared.string("core.requiresRestart")
         }
 
-        /// The change applies after Ghostgram restarts.
+        /// The change applies after NYXGram restarts.
         public static var requiresRestartFooter: Swift.String {
             return GGLocalization.shared.string("core.requiresRestartFooter")
         }
 
         public enum Import {
-            /// This is not a Ghostgram settings file, or the file is damaged.
+            /// This is not a NYXGram settings file, or the file is damaged.
             public static var invalidFormat: Swift.String {
                 return GGLocalization.shared.string("core.import.invalidFormat")
             }
 
-            /// This file was made by a newer version of Ghostgram (format {version}). Update the app to import it.
+            /// This file was made by a newer version of NYXGram (format {version}). Update the app to import it.
             public static func unsupportedVersion(version: Swift.String) -> Swift.String {
                 return GGLocalization.shared.format("core.import.unsupportedVersion", [("version", version)])
             }
@@ -6990,7 +6990,7 @@ public enum GGStrings {
                 return GGLocalization.shared.string("interface.badge.backgroundSolid")
             }
 
-            /// Ghostgram
+            /// NYXGram
             public static var bundledName: Swift.String {
                 return GGLocalization.shared.string("interface.badge.bundledName")
             }
@@ -7854,7 +7854,7 @@ public enum GGStrings {
                 return GGLocalization.shared.string("interface.menu.formattingToolbarInfo")
             }
 
-            /// Ghostgram
+            /// NYXGram
             public static var ghostIconName: Swift.String {
                 return GGLocalization.shared.string("interface.menu.ghostIconName")
             }
@@ -8510,13 +8510,13 @@ public enum GGStrings {
     }
 
     public enum Menu {
-        /// Ghostgram
+        /// NYXGram
         public static var title: Swift.String {
             return GGLocalization.shared.string("menu.title")
         }
 
         public enum About {
-            /// Ghostgram is based on Telegram for iOS and is distributed under the GNU GPL version 2.
+            /// NYXGram is based on Telegram for iOS and is distributed under the GNU GPL version 2.
             public static var licenseFooter: Swift.String {
                 return GGLocalization.shared.string("menu.about.licenseFooter")
             }
@@ -8541,7 +8541,7 @@ public enum GGStrings {
                 return GGLocalization.shared.string("menu.about.thirdPartyFooter")
             }
 
-            /// Libraries inside Ghostgram and their licenses
+            /// Libraries inside NYXGram and their licenses
             public static var thirdPartyInfo: Swift.String {
                 return GGLocalization.shared.string("menu.about.thirdPartyInfo")
             }
@@ -8593,7 +8593,7 @@ public enum GGStrings {
                 return GGLocalization.shared.string("menu.category.more")
             }
 
-            /// VPN, badges, gifts and Ghostgram settings
+            /// VPN, badges, gifts and NYXGram settings
             public static var moreInfo: Swift.String {
                 return GGLocalization.shared.string("menu.category.moreInfo")
             }
@@ -8951,7 +8951,7 @@ public enum GGStrings {
                 return GGLocalization.shared.string("menu.root.chat")
             }
 
-            /// Ghostgram {version}
+            /// NYXGram {version}
             public static func footer(version: Swift.String) -> Swift.String {
                 return GGLocalization.shared.format("menu.root.footer", [("version", version)])
             }
@@ -9021,7 +9021,7 @@ public enum GGStrings {
                 return GGLocalization.shared.string("menu.settings.exportFailed")
             }
 
-            /// Save all Ghostgram settings to a file
+            /// Save all NYXGram settings to a file
             public static var exportInfo: Swift.String {
                 return GGLocalization.shared.string("menu.settings.exportInfo")
             }
@@ -9081,12 +9081,12 @@ public enum GGStrings {
                 return GGLocalization.shared.plural("menu.settings.importUnmatchedAccounts", count: count, [])
             }
 
-            /// Ghostgram Language
+            /// NYXGram Language
             public static var language: Swift.String {
                 return GGLocalization.shared.string("menu.settings.language")
             }
 
-            /// By default, Ghostgram's texts follow Telegram's language.
+            /// By default, NYXGram's texts follow Telegram's language.
             public static var languageFooter: Swift.String {
                 return GGLocalization.shared.string("menu.settings.languageFooter")
             }
@@ -9116,7 +9116,7 @@ public enum GGStrings {
                 return GGLocalization.shared.string("menu.settings.resetText")
             }
 
-            /// Reset all Ghostgram settings?
+            /// Reset all NYXGram settings?
             public static var resetTitle: Swift.String {
                 return GGLocalization.shared.string("menu.settings.resetTitle")
             }
@@ -9330,7 +9330,7 @@ public enum GGStrings {
                     return GGLocalization.shared.string("menu.tab.more.fakeGiftsInfo")
                 }
 
-                /// Ghostgram Settings
+                /// NYXGram Settings
                 public static var ghostgramSettings: Swift.String {
                     return GGLocalization.shared.string("menu.tab.more.ghostgramSettings")
                 }
@@ -9675,7 +9675,7 @@ public enum GGStrings {
                 return GGLocalization.shared.string("nickBadge.screen.getHeader")
             }
 
-            /// Your badge is shown next to your name to everyone who uses Ghostgram with badges turned on. It goes to the Telegram account that paid for it in @{bot}. One p...
+            /// Your badge is shown next to your name to everyone who uses NYXGram with badges turned on. It goes to the Telegram account that paid for it in @{bot}. One pay...
             public static func info(bot: Swift.String) -> Swift.String {
                 return GGLocalization.shared.format("nickBadge.screen.info", [("bot", bot)])
             }
@@ -9949,71 +9949,6 @@ public enum GGStrings {
         }
 
         public enum Menu {
-            /// No ads
-            public static var blockAds: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.blockAds")
-            }
-
-            /// Sponsored messages in channels, bots and videos are not loaded
-            public static var blockAdsInfo: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.blockAdsInfo")
-            }
-
-            /// Bypass content restrictions
-            public static var contentRestrictions: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.contentRestrictions")
-            }
-
-            /// Bots, channels and messages marked “unavailable on your device” open as usual
-            public static var contentRestrictionsInfo: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.contentRestrictionsInfo")
-            }
-
-            /// Bypass copy protection
-            public static var copyProtection: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.copyProtection")
-            }
-
-            /// Forward, copy and save in protected chats. Forwards are sent as a copy
-            public static var copyProtectionInfo: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.copyProtectionInfo")
-            }
-
-            /// Credit the author in copies
-            public static var forwardAttribution: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.forwardAttribution")
-            }
-
-            /// The first line of a copy links to the author
-            public static var forwardAttributionInfo: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.forwardAttributionInfo")
-            }
-
-            /// Keep self-destructing media
-            public static var keepSelfDestructing: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.keepSelfDestructing")
-            }
-
-            /// View-once and timed photos, videos, video messages and voice messages show as ordinary media — no blur, you can save and forward them (as a copy) — and stay ...
-            public static var keepSelfDestructingInfo: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.keepSelfDestructingInfo")
-            }
-
-            /// forward
-            public static var keywordForward: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.keywordForward")
-            }
-
-            /// screenshot
-            public static var keywordScreenshot: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.keywordScreenshot")
-            }
-
-            /// view once
-            public static var keywordViewOnce: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.keywordViewOnce")
-            }
-
             /// Reveal spoilers
             public static var revealSpoilers: Swift.String {
                 return GGLocalization.shared.string("restrictions.menu.revealSpoilers")
@@ -10022,16 +9957,6 @@ public enum GGStrings {
             /// Text and media under spoilers are shown at once
             public static var revealSpoilersInfo: Swift.String {
                 return GGLocalization.shared.string("restrictions.menu.revealSpoilersInfo")
-            }
-
-            /// Bypass screenshot protection
-            public static var screenshots: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.screenshots")
-            }
-
-            /// Screenshots and screen recording in protected chats; in secret chats the other side is not told about a screenshot
-            public static var screenshotsInfo: Swift.String {
-                return GGLocalization.shared.string("restrictions.menu.screenshotsInfo")
             }
         }
     }
@@ -10068,7 +9993,7 @@ public enum GGStrings {
                 return GGLocalization.shared.string("security.accountSettings.copyPickerTitle")
             }
 
-            /// Ghost mode with its exceptions, delayed sending, protected chats, the secret folder and other chat lists are kept per account. Every other Ghostgram setting ...
+            /// Ghost mode with its exceptions, delayed sending, protected chats, the secret folder and other chat lists are kept per account. Every other NYXGram setting is...
             public static var footer: Swift.String {
                 return GGLocalization.shared.string("security.accountSettings.footer")
             }
@@ -11837,7 +11762,7 @@ public enum GGStrings {
                 return GGLocalization.shared.string("voice.transcription.keyword")
             }
 
-            /// Allow Ghostgram to use Speech Recognition in iOS Settings to transcribe voice messages.
+            /// Allow NYXGram to use Speech Recognition in iOS Settings to transcribe voice messages.
             public static var notAuthorized: Swift.String {
                 return GGLocalization.shared.string("voice.transcription.notAuthorized")
             }

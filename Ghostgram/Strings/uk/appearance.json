@@ -57,7 +57,7 @@
   "appearance.font.customHeader": "Власні шрифти",
   "appearance.font.familiesFooter": "Ці шрифти вже є в iOS, нічого не завантажується. Зразок ліворуч — так шрифт виглядає в застосунку. Де немає кирилиці, кириличні літери малюються системним шрифтом.",
   "appearance.font.familiesHeader": "Шрифти iOS",
-  "appearance.font.info": "Шрифт усього застосунку. Застосовується після перезапуску Ghostgram.",
+  "appearance.font.info": "Шрифт усього застосунку. Застосовується після перезапуску NYXGram.",
   "appearance.font.keywords": "шрифт гарнітура font заокруглений зарубки моноширинний",
   "appearance.font.monospaced": "Моноширинний",
   "appearance.font.noCyrillic": "Без кирилиці",

@@ -57,7 +57,7 @@
   "appearance.font.customHeader": "Your fonts",
   "appearance.font.familiesFooter": "These fonts come with iOS; nothing is downloaded. The sample on the left shows the font as the app draws it. Where a font has no Cyrillic, Cyrillic letters are drawn in the system font.",
   "appearance.font.familiesHeader": "iOS fonts",
-  "appearance.font.info": "The font of the whole app. Applies after Ghostgram restarts.",
+  "appearance.font.info": "The font of the whole app. Applies after NYXGram restarts.",
   "appearance.font.keywords": "font typeface rounded serif monospaced",
   "appearance.font.monospaced": "Monospaced",
   "appearance.font.noCyrillic": "No Cyrillic",

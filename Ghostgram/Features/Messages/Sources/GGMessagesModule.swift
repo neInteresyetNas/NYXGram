@@ -13,8 +13,7 @@ public enum GGMessagesModule {
         // GGMessagesShared.register() (called before this one by GGFeaturesShared.registerForApp()).
         let _ = GGOutgoingPipeline.replacementRules
 
-        GGRestrictionHandlers.register()
-        GGKeptMediaMenu.register()
+        // NYXGram: restriction-bypass handlers are not registered.
         GGMessageDecorations.register()
         GGOutgoingPipeline.register()
         GGOutgoingTransforms.register()

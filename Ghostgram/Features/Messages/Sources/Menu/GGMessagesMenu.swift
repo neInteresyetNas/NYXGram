@@ -46,12 +46,6 @@ enum GGMessagesMenu {
 
     private static func registerRestrictions() {
         let section = GGMenuSectionID.main(of: .messagesRestrictions)
-        GGMenuRegistry.register(toggle("restrictions.copyProtection", section: section, order: 100, setting: GGMessagesSettings.copyProtectionBypass, title: { GGStrings.Restrictions.Menu.copyProtection }, subtitle: { GGStrings.Restrictions.Menu.copyProtectionInfo }, keywords: { [GGStrings.Restrictions.Menu.keywordForward] }))
-        GGMenuRegistry.register(toggle("restrictions.forwardAttribution", section: section, order: 200, setting: GGMessagesSettings.forwardAttribution, title: { GGStrings.Restrictions.Menu.forwardAttribution }, subtitle: { GGStrings.Restrictions.Menu.forwardAttributionInfo }, isVisible: { _ in GGMessagesSettings.copyProtectionBypass.value }))
-        GGMenuRegistry.register(toggle("restrictions.keepSelfDestructing", section: section, order: 300, setting: GGMessagesSettings.keepSelfDestructingMedia, title: { GGStrings.Restrictions.Menu.keepSelfDestructing }, subtitle: { GGStrings.Restrictions.Menu.keepSelfDestructingInfo }, keywords: { [GGStrings.Restrictions.Menu.keywordViewOnce] }))
-        GGMenuRegistry.register(toggle("restrictions.screenshots", section: section, order: 400, setting: GGMessagesSettings.screenshotBypass, title: { GGStrings.Restrictions.Menu.screenshots }, subtitle: { GGStrings.Restrictions.Menu.screenshotsInfo }, keywords: { [GGStrings.Restrictions.Menu.keywordScreenshot] }))
-        GGMenuRegistry.register(toggle("restrictions.blockAds", section: section, order: 500, setting: GGMessagesSettings.blockAds, title: { GGStrings.Restrictions.Menu.blockAds }, subtitle: { GGStrings.Restrictions.Menu.blockAdsInfo }))
-        GGMenuRegistry.register(toggle("restrictions.contentRestrictions", section: section, order: 600, setting: GGMessagesSettings.contentRestrictionsBypass, title: { GGStrings.Restrictions.Menu.contentRestrictions }, subtitle: { GGStrings.Restrictions.Menu.contentRestrictionsInfo }))
         GGMenuRegistry.register(toggle("restrictions.revealSpoilers", section: section, order: 700, setting: GGMessagesSettings.revealSpoilers, title: { GGStrings.Restrictions.Menu.revealSpoilers }, subtitle: { GGStrings.Restrictions.Menu.revealSpoilersInfo }))
     }
 

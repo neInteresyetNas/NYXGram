@@ -667,7 +667,7 @@ plist_fragment(
     template =
     """
     <key>CFBundleDisplayName</key>
-    <string>Ghostgram</string> <!-- GHOST: app name -->
+    <string>NYXGram</string> <!-- NYX: app name -->
     """
 )
 

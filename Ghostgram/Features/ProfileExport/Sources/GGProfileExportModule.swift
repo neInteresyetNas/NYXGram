@@ -18,19 +18,11 @@ public enum GGProfileExportModule {
         GGFakeGiftsLegacy.registerMigrations()
 
         // Nick badge: slots, the network side (off until the user turns badges on), menu.
-        GGNickBadgeSlots.register()
-        GGNickBadgeMenu.register()
-        GGNickBadgeService.shared.start()
+        // NYXGram: nick badges (third-party server, paid) are not registered.
 
         // Fake gifts: the profile's list, the gift screen's menu, the store per account.
-        GGFakeGiftsHooks.register()
-        GGFakeGiftsMenu.register()
-        GGProfileExportModule.fakeGiftsDisposable = (GGFakeGiftsSettings.isEnabled.signal
-        |> distinctUntilChanged).start(next: { enabled in
-            GGFakeGiftsStore.shared.setEnabled(enabled)
-        })
+        // NYXGram: fake gifts and local stars are not registered (they show data that is not real).
         // Local stars: the Stars balance shown on this device (same tab, own section).
-        GGLocalStars.register()
 
         // Chat export: entry points; temporary trees of old jobs are removed off the main thread.
         GGChatExportMenu.register()

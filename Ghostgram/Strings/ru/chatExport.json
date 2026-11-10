@@ -18,7 +18,7 @@
   "chatExport.menu.jobsInfo": "Прогресс, продолжить, сохранить, удалить",
   "chatExport.menu.keywords": "экспорт выгрузка архив резервная копия html json",
   "chatExport.menu.profileItem": "Экспорт чата",
-  "chatExport.output.about": "Данные, выгруженные из Telegram через Ghostgram.",
+  "chatExport.output.about": "Данные, выгруженные из Telegram через NYXGram.",
   "chatExport.output.bio": "О себе",
   "chatExport.output.bot": "Бот",
   "chatExport.output.browser": "Браузер",

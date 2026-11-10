@@ -10,7 +10,7 @@
   "security.accountSettings.copyConfirmText": "ستحل إعدادات الحساب «{name}» المحفوظة لكل حساب على حدة (وضع الشبح، الاستثناءات، الإرسال المؤجل، المحادثات المحمية وغيرها) محل إعدادات هذا الحساب. لا تُنقل المجلدات: فللحساب الآخر مجلداته الخاصة.",
   "security.accountSettings.copyConfirmTitle": "نقل الإعدادات؟",
   "security.accountSettings.copyPickerTitle": "أخذ الإعدادات من",
-  "security.accountSettings.footer": "يُحفظ وضع الشبح واستثناءاته والإرسال المؤجل والمحادثات المحمية والمجلد السري وقوائم المحادثات الأخرى لكل حساب على حدة. أما بقية إعدادات Ghostgram فمشتركة بين جميع الحسابات.",
+  "security.accountSettings.footer": "يُحفظ وضع الشبح واستثناءاته والإرسال المؤجل والمحادثات المحمية والمجلد السري وقوائم المحادثات الأخرى لكل حساب على حدة. أما بقية إعدادات NYXGram فمشتركة بين جميع الحسابات.",
   "security.accountSettings.header": "إعدادات كل حساب",
   "security.accountSettings.keywords": "حساب حسابات إعدادات ملفات تعريف",
   "security.accountSettings.noOtherAccounts": "لا توجد حسابات أخرى",

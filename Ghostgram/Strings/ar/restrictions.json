@@ -16,21 +16,6 @@
   "restrictions.keptMedia.failed": "تعذّر وضع علامة «مفتوحة» على الوسائط",
   "restrictions.keptMedia.markOpened": "وضع علامة «مفتوحة»",
   "restrictions.keptMedia.markedOpened": "سيرى المرسل أن الوسائط فُتحت",
-  "restrictions.menu.blockAds": "بدون إعلانات",
-  "restrictions.menu.blockAdsInfo": "لا تُحمَّل الرسائل المموّلة في القنوات والبوتات ومقاطع الفيديو",
-  "restrictions.menu.contentRestrictions": "تجاوز قيود المحتوى",
-  "restrictions.menu.contentRestrictionsInfo": "البوتات والقنوات والرسائل الموسومة بـ«غير متاح على جهازك» تُفتح كالمعتاد",
-  "restrictions.menu.copyProtection": "تجاوز حماية النسخ",
-  "restrictions.menu.copyProtectionInfo": "إعادة التوجيه والنسخ والحفظ في المحادثات المحمية. تُرسل إعادة التوجيه كنسخة من الرسالة",
-  "restrictions.menu.forwardAttribution": "ذكر المؤلف في النسخ",
-  "restrictions.menu.forwardAttributionInfo": "السطر الأول من النسخة رابط إلى المؤلف",
-  "restrictions.menu.keepSelfDestructing": "الاحتفاظ بالوسائط ذاتية التدمير",
-  "restrictions.menu.keepSelfDestructingInfo": "تظهر الصور ومقاطع الفيديو والرسائل المرئية والصوتية ذات العرض لمرة واحدة أو المؤقت كوسائط عادية — بلا تمويه، ويمكنك حفظها وإعادة توجيهها (كنسخة) — وتبقى في المحادثة ولا يبدأ أي مؤقت. لا يعلم المرسل بفتحها إلا إذا وضعتَ عليها علامة «مفتوحة» من قائمة الرسالة (بالضغط المطوّل على الوسائط في المحادثة)",
-  "restrictions.menu.keywordForward": "إعادة توجيه",
-  "restrictions.menu.keywordScreenshot": "لقطة شاشة",
-  "restrictions.menu.keywordViewOnce": "عرض لمرة واحدة",
   "restrictions.menu.revealSpoilers": "إظهار المحتوى المخفي",
-  "restrictions.menu.revealSpoilersInfo": "يظهر النص والوسائط المخفية مباشرة دون الحاجة إلى النقر",
-  "restrictions.menu.screenshots": "تجاوز حماية لقطات الشاشة",
-  "restrictions.menu.screenshotsInfo": "لقطات الشاشة وتسجيل الشاشة في المحادثات المحمية؛ وفي المحادثات السرية لا يُبلَّغ الطرف الآخر بلقطة الشاشة"
+  "restrictions.menu.revealSpoilersInfo": "يظهر النص والوسائط المخفية مباشرة دون الحاجة إلى النقر"
 }

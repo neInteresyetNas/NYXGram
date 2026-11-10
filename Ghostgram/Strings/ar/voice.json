@@ -113,7 +113,7 @@
   "voice.transcription.footerPremium": "لديك Telegram Premium: يحوّل خادم Telegram الرسائل الصوتية ورسائل الفيديو إلى نص. إذا انتهى Premium، ينتقل التحويل إلى التعرّف على الكلام من Apple تلقائيًا.",
   "voice.transcription.header": "التحويل إلى نص",
   "voice.transcription.keyword": "نص",
-  "voice.transcription.notAuthorized": "اسمح لـGhostgram باستخدام التعرّف على الكلام في إعدادات iOS لتحويل الرسائل الصوتية إلى نص.",
+  "voice.transcription.notAuthorized": "اسمح لـNYXGram باستخدام التعرّف على الكلام في إعدادات iOS لتحويل الرسائل الصوتية إلى نص.",
   "voice.transcription.wordBubbles": "فقاعات الكلمات",
   "voice.transcription.wordBubblesInfo": "انقر على كلمة للتشغيل من عندها",
   "voice.unit.bits": "{value} بت",

@@ -417,7 +417,7 @@
   "cameraMasks.studio.error.asset": "صورة القناع تالفة أو كبيرة جدًا",
   "cameraMasks.studio.error.emptyName": "أدخل اسمًا للقناع",
   "cameraMasks.studio.error.notFound": "لم يتم العثور على القناع",
-  "cameraMasks.studio.error.package": "هذا ليس ملف قناع Ghostgram",
+  "cameraMasks.studio.error.package": "هذا ليس ملف قناع NYXGram",
   "cameraMasks.studio.error.read": "تعذّرت قراءة الملف",
   "cameraMasks.studio.error.title": "حدث خطأ ما",
   "cameraMasks.studio.error.version": "أُنشئ القناع بإصدار أحدث (التنسيق {version}). حدِّث التطبيق.",

@@ -1,0 +1,4 @@
+NYXGram contains and modifies:
+- Ghostgram, https://github.com/ichmagmaus111/ghostgram (GPL-2.0), commit 2a6b0827.
+- Telegram for iOS, https://github.com/TelegramMessenger/Telegram-iOS (GPL-2.0) and its submodules.
+Their copyright notices remain in the source files. NYXGram is licensed under GPL-2.0 (see LICENSE).

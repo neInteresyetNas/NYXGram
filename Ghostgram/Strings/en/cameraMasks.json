@@ -417,7 +417,7 @@
   "cameraMasks.studio.error.asset": "A picture of the mask is damaged or too large",
   "cameraMasks.studio.error.emptyName": "Enter a name for the mask",
   "cameraMasks.studio.error.notFound": "The mask was not found",
-  "cameraMasks.studio.error.package": "This is not a Ghostgram mask file",
+  "cameraMasks.studio.error.package": "This is not a NYXGram mask file",
   "cameraMasks.studio.error.read": "The file could not be read",
   "cameraMasks.studio.error.title": "Something went wrong",
   "cameraMasks.studio.error.version": "The mask was made in a newer version (format {version}). Update the app.",

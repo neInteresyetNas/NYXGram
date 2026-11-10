@@ -57,7 +57,7 @@
   "appearance.font.customHeader": "Свои шрифты",
   "appearance.font.familiesFooter": "Эти шрифты уже есть в iOS, ничего не скачивается. Образец слева — так шрифт выглядит в приложении. Где нет кириллицы, русские буквы рисуются системным шрифтом.",
   "appearance.font.familiesHeader": "Шрифты iOS",
-  "appearance.font.info": "Шрифт всего приложения. Применяется после перезапуска Ghostgram.",
+  "appearance.font.info": "Шрифт всего приложения. Применяется после перезапуска NYXGram.",
   "appearance.font.keywords": "шрифт гарнитура font скруглённый засечки моноширинный",
   "appearance.font.monospaced": "Моноширинный",
   "appearance.font.noCyrillic": "Без кириллицы",

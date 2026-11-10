@@ -113,7 +113,7 @@
   "voice.transcription.footerPremium": "У вас Telegram Premium: голосовые и кружки расшифровывает сервер Telegram. Если Premium закончится, расшифровка сама перейдёт на распознавание Apple.",
   "voice.transcription.header": "Расшифровка",
   "voice.transcription.keyword": "текст",
-  "voice.transcription.notAuthorized": "Разрешите Ghostgram распознавание речи в Настройках iOS, чтобы расшифровывать голосовые.",
+  "voice.transcription.notAuthorized": "Разрешите NYXGram распознавание речи в Настройках iOS, чтобы расшифровывать голосовые.",
   "voice.transcription.wordBubbles": "Слова-пузыри",
   "voice.transcription.wordBubblesInfo": "Тап по слову — воспроизведение с этого места",
   "voice.unit.bits": "{value} бит",
