@@ -1,0 +1,1244 @@
+From 5ffc95c272e7a9ba2267df46c0df89978792dbfc Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 10 Nov 2026 17:27:32 +0300
+Subject: [PATCH] Add NYX Toolkit (event log, filter rules, streamer masking)
+
+Written and statically checked only; not compiled or run.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011LR6mJrjR4QkTzyEjdJcyD
+---
+ Ghostgram/Features/BUILD                      |   1 +
+ Ghostgram/Features/NYXToolkit/BUILD           |  33 +++
+ .../NYXToolkit/Core/NYXEventLog.swift         |  61 +++++
+ .../NYXToolkit/Core/NYXJSONFile.swift         |  59 +++++
+ .../NYXToolkit/Core/NYXMessageFilter.swift    |  77 ++++++
+ .../NYXToolkit/Core/NYXRedactor.swift         |  57 +++++
+ .../NYXToolkit/Core/NYXToolkitPrefs.swift     |  28 +++
+ .../Sources/GGNYXToolkitModule.swift          |  39 +++
+ .../NYXToolkit/Sources/NYXToolkitViews.swift  | 237 ++++++++++++++++++
+ .../NYXToolkit/Tests/NYXToolkitTests.swift    | 113 +++++++++
+ .../NYXTools/Core/NYXJSONFileStore.swift      |  85 +++++++
+ .../Features/NYXTools/Core/NYXLogic.swift     | 111 ++++++++
+ .../Features/NYXTools/Core/NYXToolsData.swift | 106 ++++++++
+ .../NYXTools/Tests/NYXToolsTests.swift        |  68 +++++
+ Ghostgram/Features/Sources/GGFeatures.swift   |   3 +
+ NYXGram/docs/TOOLKIT.md                       |   9 +
+ 16 files changed, 1087 insertions(+)
+ create mode 100644 Ghostgram/Features/NYXToolkit/BUILD
+ create mode 100644 Ghostgram/Features/NYXToolkit/Core/NYXEventLog.swift
+ create mode 100644 Ghostgram/Features/NYXToolkit/Core/NYXJSONFile.swift
+ create mode 100644 Ghostgram/Features/NYXToolkit/Core/NYXMessageFilter.swift
+ create mode 100644 Ghostgram/Features/NYXToolkit/Core/NYXRedactor.swift
+ create mode 100644 Ghostgram/Features/NYXToolkit/Core/NYXToolkitPrefs.swift
+ create mode 100644 Ghostgram/Features/NYXToolkit/Sources/GGNYXToolkitModule.swift
+ create mode 100644 Ghostgram/Features/NYXToolkit/Sources/NYXToolkitViews.swift
+ create mode 100644 Ghostgram/Features/NYXToolkit/Tests/NYXToolkitTests.swift
+ create mode 100644 Ghostgram/Features/NYXTools/Core/NYXJSONFileStore.swift
+ create mode 100644 Ghostgram/Features/NYXTools/Core/NYXLogic.swift
+ create mode 100644 Ghostgram/Features/NYXTools/Core/NYXToolsData.swift
+ create mode 100644 Ghostgram/Features/NYXTools/Tests/NYXToolsTests.swift
+ create mode 100644 NYXGram/docs/TOOLKIT.md
+
+diff --git a/Ghostgram/Features/BUILD b/Ghostgram/Features/BUILD
+index d7b64456..92afff5e 100644
+--- a/Ghostgram/Features/BUILD
++++ b/Ghostgram/Features/BUILD
+@@ -32,6 +32,7 @@ swift_library(
+         "//Ghostgram/Features/RegDate:GGRegDate",
+         # NYXGram: Gifts Studio
+         "//Ghostgram/Features/GiftsStudio:GGGiftsStudio",
++        "//Ghostgram/Features/NYXToolkit:GGNYXToolkit",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/Ghostgram/Features/NYXToolkit/BUILD b/Ghostgram/Features/NYXToolkit/BUILD
+new file mode 100644
+index 00000000..cf7aca52
+--- /dev/null
++++ b/Ghostgram/Features/NYXToolkit/BUILD
+@@ -0,0 +1,33 @@
++load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
++
++# NYXGram Toolkit: local event log, message-filter rules, Streamer-mode text redaction.
++# Core is Foundation-only (unit-testable); the feature target adds the SwiftUI screens and the menu row.
++swift_library(
++    name = "GGNYXToolkitCore",
++    module_name = "GGNYXToolkitCore",
++    srcs = glob(["Core/**/*.swift"]),
++    copts = ["-warnings-as-errors"],
++    visibility = ["//visibility:public"],
++)
++
++swift_library(
++    name = "GGNYXToolkit",
++    module_name = "GGNYXToolkit",
++    srcs = glob(["Sources/**/*.swift"]),
++    copts = ["-warnings-as-errors"],
++    deps = [
++        ":GGNYXToolkitCore",
++        "//Ghostgram/GGCore:GGCore",
++        "//Ghostgram/GGSettingsUI:GGSettingsUI",
++        "//submodules/AccountContext:AccountContext",
++        "//submodules/Display:Display",
++    ],
++    visibility = ["//visibility:public"],
++)
++
++swift_test(
++    name = "GGNYXToolkitCoreTests",
++    srcs = glob(["Tests/**/*.swift"]),
++    copts = ["-warnings-as-errors"],
++    deps = [":GGNYXToolkitCore"],
++)
+diff --git a/Ghostgram/Features/NYXToolkit/Core/NYXEventLog.swift b/Ghostgram/Features/NYXToolkit/Core/NYXEventLog.swift
+new file mode 100644
+index 00000000..62499065
+--- /dev/null
++++ b/Ghostgram/Features/NYXToolkit/Core/NYXEventLog.swift
+@@ -0,0 +1,61 @@
++import Foundation
++
++public enum NYXEventSeverity: String, Codable, CaseIterable {
++    case info, notice, warning
++}
++
++public struct NYXEvent: Codable, Equatable {
++    public var date: Date
++    public var severity: NYXEventSeverity
++    public var source: String
++    public var text: String
++    public init(date: Date, severity: NYXEventSeverity, source: String, text: String) {
++        self.date = date; self.severity = severity; self.source = source; self.text = text
++    }
++}
++
++public struct NYXEventLogData: Codable, Equatable {
++    public var events: [NYXEvent] = []
++    public init() {}
++}
++
++/// Local event log of what NYXGram features did ("Gifts: pinned X", "Import: settings restored").
++/// Capped; text is cut so the log can never grow without bound. It stays on the device.
++public final class NYXEventLog {
++    public static let maxEvents = 500
++    public static let maxTextLength = 300
++    public static let shared = NYXEventLog(url: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("NYXGram/event-log.json"))
++
++    private let file: NYXJSONFile<NYXEventLogData>
++
++    public init(url: URL) {
++        self.file = NYXJSONFile(url: url, defaultValue: NYXEventLogData())
++    }
++
++    public var events: [NYXEvent] { return self.file.value.events }
++    public var wasRecovered: Bool { return self.file.recovered }
++
++    public func record(_ severity: NYXEventSeverity = .info, source: String, _ text: String, now: Date = Date()) {
++        let event = NYXEvent(date: now, severity: severity, source: String(source.prefix(40)), text: String(text.prefix(NYXEventLog.maxTextLength)))
++        self.file.update { data in
++            data.events.append(event)
++            if data.events.count > NYXEventLog.maxEvents {
++                data.events.removeFirst(data.events.count - NYXEventLog.maxEvents)
++            }
++        }
++    }
++
++    public func clear() {
++        self.file.update { $0.events = [] }
++    }
++
++    /// Newest first, optionally limited to a severity and a search text.
++    public func query(severity: NYXEventSeverity? = nil, search: String = "") -> [NYXEvent] {
++        let needle = search.trimmingCharacters(in: .whitespaces).lowercased()
++        return self.events.reversed().filter { event in
++            if let severity = severity, event.severity != severity { return false }
++            if needle.isEmpty { return true }
++            return event.text.lowercased().contains(needle) || event.source.lowercased().contains(needle)
++        }
++    }
++}
+diff --git a/Ghostgram/Features/NYXToolkit/Core/NYXJSONFile.swift b/Ghostgram/Features/NYXToolkit/Core/NYXJSONFile.swift
+new file mode 100644
+index 00000000..50f06359
+--- /dev/null
++++ b/Ghostgram/Features/NYXToolkit/Core/NYXJSONFile.swift
+@@ -0,0 +1,59 @@
++import Foundation
++
++/// One small JSON file with an atomic write, a backup of the previous good version and quarantine of a
++/// damaged file (never silently deleted).
++public final class NYXJSONFile<Value: Codable & Equatable> {
++    private let url: URL
++    private let lock = NSLock()
++    public private(set) var value: Value
++    public private(set) var recovered = false
++
++    public init(url: URL, defaultValue: Value) {
++        self.url = url
++        self.value = defaultValue
++        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
++        if let main = NYXJSONFile.read(url, as: Value.self) {
++            self.value = main
++        } else if FileManager.default.fileExists(atPath: url.path) {
++            self.recovered = true
++            let stamp = Int(Date().timeIntervalSince1970)
++            try? FileManager.default.moveItem(at: url, to: url.appendingPathExtension("corrupt-\(stamp)"))
++            if let backup = NYXJSONFile.read(url.appendingPathExtension("bak"), as: Value.self) {
++                self.value = backup
++            }
++        }
++    }
++
++    private static func read<T: Decodable>(_ url: URL, as type: T.Type) -> T? {
++        guard let data = try? Data(contentsOf: url) else { return nil }
++        let decoder = JSONDecoder()
++        decoder.dateDecodingStrategy = .iso8601
++        return try? decoder.decode(T.self, from: data)
++    }
++
++    @discardableResult
++    public func update(_ change: (inout Value) -> Void) -> Bool {
++        self.lock.lock()
++        defer { self.lock.unlock() }
++        var next = self.value
++        change(&next)
++        guard next != self.value else { return true }
++        let encoder = JSONEncoder()
++        encoder.outputFormatting = [.sortedKeys]
++        encoder.dateEncodingStrategy = .iso8601
++        guard let data = try? encoder.encode(next) else { return false }
++        let fm = FileManager.default
++        if fm.fileExists(atPath: self.url.path), NYXJSONFile.read(self.url, as: Value.self) != nil {
++            let backup = self.url.appendingPathExtension("bak")
++            try? fm.removeItem(at: backup)
++            try? fm.copyItem(at: self.url, to: backup)
++        }
++        do {
++            try data.write(to: self.url, options: [.atomic])
++            self.value = next
++            return true
++        } catch {
++            return false
++        }
++    }
++}
+diff --git a/Ghostgram/Features/NYXToolkit/Core/NYXMessageFilter.swift b/Ghostgram/Features/NYXToolkit/Core/NYXMessageFilter.swift
+new file mode 100644
+index 00000000..a57e5f39
+--- /dev/null
++++ b/Ghostgram/Features/NYXToolkit/Core/NYXMessageFilter.swift
+@@ -0,0 +1,77 @@
++import Foundation
++
++public enum NYXFilterKind: String, Codable, CaseIterable {
++    case keyword      // case-insensitive substring
++    case wholeWord    // case-insensitive, word boundaries
++    case regex        // NSRegularExpression, validated
++}
++
++public enum NYXFilterAction: String, Codable, CaseIterable {
++    case hide, highlight, mute
++}
++
++public struct NYXFilterRule: Codable, Equatable, Identifiable {
++    public var id: UUID
++    public var name: String
++    public var enabled: Bool
++    public var kind: NYXFilterKind
++    public var pattern: String
++    public var action: NYXFilterAction
++
++    public init(id: UUID = UUID(), name: String, enabled: Bool = true, kind: NYXFilterKind = .keyword, pattern: String, action: NYXFilterAction = .hide) {
++        self.id = id; self.name = name; self.enabled = enabled; self.kind = kind; self.pattern = pattern; self.action = action
++    }
++}
++
++public enum NYXFilterValidation: Equatable {
++    case ok
++    case emptyPattern
++    case tooLong
++    case invalidRegex
++}
++
++/// Pure rule matcher. It decides what a rule set would do with a text; wiring that decision into the chat
++/// UI is a separate step.
++public enum NYXMessageFilter {
++    public static let maxPatternLength = 200
++    public static let maxRules = 100
++    public static let maxTextLength = 20_000
++
++    public static func validate(_ rule: NYXFilterRule) -> NYXFilterValidation {
++        let pattern = rule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
++        if pattern.isEmpty { return .emptyPattern }
++        if pattern.count > maxPatternLength { return .tooLong }
++        if rule.kind == .regex, (try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])) == nil {
++            return .invalidRegex
++        }
++        return .ok
++    }
++
++    public static func matches(_ rule: NYXFilterRule, in text: String) -> Bool {
++        guard rule.enabled, validate(rule) == .ok else { return false }
++        let text = String(text.prefix(maxTextLength))
++        let pattern = rule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
++        switch rule.kind {
++        case .keyword:
++            return text.range(of: pattern, options: [.caseInsensitive, .diacriticInsensitive]) != nil
++        case .wholeWord:
++            let escaped = NSRegularExpression.escapedPattern(for: pattern)
++            return text.range(of: "(?<![\\p{L}\\p{N}_])\(escaped)(?![\\p{L}\\p{N}_])", options: [.regularExpression, .caseInsensitive]) != nil
++        case .regex:
++            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return false }
++            return regex.firstMatch(in: text, options: [], range: NSRange(text.startIndex..., in: text)) != nil
++        }
++    }
++
++    /// Strongest action among matching rules: hide > mute > highlight. Nil when nothing matches.
++    public static func decide(_ rules: [NYXFilterRule], text: String) -> (action: NYXFilterAction, rule: NYXFilterRule)? {
++        let order: [NYXFilterAction] = [.hide, .mute, .highlight]
++        var best: (NYXFilterAction, NYXFilterRule)?
++        for rule in rules.prefix(maxRules) where matches(rule, in: text) {
++            if best == nil || order.firstIndex(of: rule.action)! < order.firstIndex(of: best!.0)! {
++                best = (rule.action, rule)
++            }
++        }
++        return best.map { (action: $0.0, rule: $0.1) }
++    }
++}
+diff --git a/Ghostgram/Features/NYXToolkit/Core/NYXRedactor.swift b/Ghostgram/Features/NYXToolkit/Core/NYXRedactor.swift
+new file mode 100644
+index 00000000..4c14d033
+--- /dev/null
++++ b/Ghostgram/Features/NYXToolkit/Core/NYXRedactor.swift
+@@ -0,0 +1,57 @@
++import Foundation
++
++public struct NYXRedactionOptions: Codable, Equatable {
++    public var phones = true
++    public var emails = true
++    public var links = true
++    public var cardNumbers = true
++    public var usernames = false
++    public init() {}
++}
++
++/// Masks sensitive-looking text for Streamer Mode. Purely textual: it works on strings it is given.
++public enum NYXRedactor {
++    public static let mask = "••••"
++
++    public static func redact(_ text: String, options: NYXRedactionOptions = NYXRedactionOptions()) -> String {
++        var result = text
++        // Order matters: links and emails first so their digits/@ are not re-matched.
++        if options.links { result = replace(result, #"(?i)\b(?:https?://|www\.|t\.me/)[^\s<>"']+"#) }
++        if options.emails { result = replace(result, #"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"#) }
++        if options.cardNumbers { result = replaceCards(result) }
++        if options.phones { result = replace(result, #"(?<![\w])\+?\d[\d\-\s().]{8,16}\d(?![\w])"#) }
++        if options.usernames { result = replace(result, #"(?<![\w@])@[A-Za-z][A-Za-z0-9_]{4,31}"#) }
++        return result
++    }
++
++    private static func replace(_ text: String, _ pattern: String) -> String {
++        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return text }
++        return regex.stringByReplacingMatches(in: text, options: [], range: NSRange(text.startIndex..., in: text), withTemplate: mask)
++    }
++
++    /// 13–19 digits (spaces/dashes allowed) that pass the Luhn check.
++    private static func replaceCards(_ text: String) -> String {
++        guard let regex = try? NSRegularExpression(pattern: #"(?<!\d)(?:\d[ \-]?){12,18}\d(?!\d)"#, options: []) else { return text }
++        let ns = text as NSString
++        var result = text as String
++        for match in regex.matches(in: text, options: [], range: NSRange(location: 0, length: ns.length)).reversed() {
++            let candidate = ns.substring(with: match.range)
++            let digits = candidate.filter { $0.isNumber }
++            if luhn(digits), let range = Range(match.range, in: result) {
++                result.replaceSubrange(range, with: mask)
++            }
++        }
++        return result
++    }
++
++    static func luhn(_ digits: String) -> Bool {
++        guard digits.count >= 13, digits.count <= 19 else { return false }
++        var sum = 0
++        for (index, char) in digits.reversed().enumerated() {
++            guard var value = char.wholeNumberValue else { return false }
++            if index % 2 == 1 { value *= 2; if value > 9 { value -= 9 } }
++            sum += value
++        }
++        return sum % 10 == 0
++    }
++}
+diff --git a/Ghostgram/Features/NYXToolkit/Core/NYXToolkitPrefs.swift b/Ghostgram/Features/NYXToolkit/Core/NYXToolkitPrefs.swift
+new file mode 100644
+index 00000000..b2fbc7df
+--- /dev/null
++++ b/Ghostgram/Features/NYXToolkit/Core/NYXToolkitPrefs.swift
+@@ -0,0 +1,28 @@
++import Foundation
++
++public struct NYXToolkitPrefs: Codable, Equatable {
++    public var filterRules: [NYXFilterRule] = []
++    public var redaction = NYXRedactionOptions()
++    public init() {}
++}
++
++public final class NYXToolkitStore {
++    public static let shared = NYXToolkitStore(url: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("NYXGram/toolkit.json"))
++    private let file: NYXJSONFile<NYXToolkitPrefs>
++    public init(url: URL) { self.file = NYXJSONFile(url: url, defaultValue: NYXToolkitPrefs()) }
++    public var prefs: NYXToolkitPrefs { return self.file.value }
++    public var wasRecovered: Bool { return self.file.recovered }
++
++    /// Rule limits are enforced here, so the UI cannot store an invalid rule set.
++    @discardableResult
++    public func addRule(_ rule: NYXFilterRule) -> NYXFilterValidation {
++        let check = NYXMessageFilter.validate(rule)
++        guard check == .ok, self.prefs.filterRules.count < NYXMessageFilter.maxRules else {
++            return check == .ok ? .tooLong : check
++        }
++        self.file.update { $0.filterRules.append(rule) }
++        return .ok
++    }
++
++    public func update(_ change: (inout NYXToolkitPrefs) -> Void) { self.file.update(change) }
++}
+diff --git a/Ghostgram/Features/NYXToolkit/Sources/GGNYXToolkitModule.swift b/Ghostgram/Features/NYXToolkit/Sources/GGNYXToolkitModule.swift
+new file mode 100644
+index 00000000..5250e67c
+--- /dev/null
++++ b/Ghostgram/Features/NYXToolkit/Sources/GGNYXToolkitModule.swift
+@@ -0,0 +1,39 @@
++import Foundation
++import SwiftUI
++import UIKit
++import GGCore
++import GGSettingsUI
++import GGNYXToolkitCore
++
++public enum GGNYXToolkitModule {
++    static let section = GGMenuSectionID("nyxToolkit.main")
++
++    public static func register() {
++        GGMenuRegistry.register(section: GGMenuSectionDescriptor(id: GGNYXToolkitModule.section, screen: .category(.more), order: 60))
++        GGMenuRegistry.register(GGMenuRow(
++            id: "nyxToolkit.open",
++            section: GGNYXToolkitModule.section,
++            order: 100,
++            title: { tk("NYX Toolkit", "NYX Toolkit") },
++            subtitle: { tk("Event log, message filter rules, Streamer-mode masking tester.", "Журнал событий, правила фильтров, проверка маскировки для стримов.") },
++            icon: .system("wrench.and.screwdriver"),
++            kind: .action({ menuContext in
++                GGNYXToolkitModule.open(menuContext)
++            }),
++            searchKeywords: { ["log", "журнал", "filter", "фильтр", "streamer", "стример", "mask"] }
++        ))
++    }
++
++    private static func open(_ menuContext: GGMenuContext) {
++        var controller: UIHostingController<NYXToolkitRootView>?
++        let root = NYXToolkitRootView(close: { controller?.dismiss(animated: true, completion: nil) })
++        let hosting = UIHostingController(rootView: root)
++        hosting.modalPresentationStyle = .pageSheet
++        controller = hosting
++        menuContext.presentNative(hosting)
++    }
++}
++
++func tk(_ en: String, _ ru: String) -> String {
++    return Locale.preferredLanguages.first?.hasPrefix("ru") == true ? ru : en
++}
+diff --git a/Ghostgram/Features/NYXToolkit/Sources/NYXToolkitViews.swift b/Ghostgram/Features/NYXToolkit/Sources/NYXToolkitViews.swift
+new file mode 100644
+index 00000000..0ba4b36d
+--- /dev/null
++++ b/Ghostgram/Features/NYXToolkit/Sources/NYXToolkitViews.swift
+@@ -0,0 +1,237 @@
++import Foundation
++import SwiftUI
++import GGNYXToolkitCore
++
++private let violet = Color(red: 0.55, green: 0.36, blue: 0.96)
++
++final class NYXToolkitModel: ObservableObject {
++    private let store = NYXToolkitStore.shared
++    private let log = NYXEventLog.shared
++    @Published var rules: [NYXFilterRule]
++    @Published var redaction: NYXRedactionOptions
++    @Published var events: [NYXEvent]
++
++    init() {
++        self.rules = store.prefs.filterRules
++        self.redaction = store.prefs.redaction
++        self.events = log.query()
++        if store.wasRecovered || log.wasRecovered {
++            log.record(.warning, source: "Toolkit", "A damaged data file was set aside and a backup or defaults were used.")
++            self.events = log.query()
++        }
++    }
++
++    func addRule(_ rule: NYXFilterRule) -> NYXFilterValidation {
++        let result = store.addRule(rule)
++        if result == .ok { log.record(source: "Filters", "Rule added: \(rule.name)") }
++        refresh()
++        return result
++    }
++
++    func updateRule(_ rule: NYXFilterRule) {
++        store.update { prefs in
++            if let i = prefs.filterRules.firstIndex(where: { $0.id == rule.id }) { prefs.filterRules[i] = rule }
++        }
++        refresh()
++    }
++
++    func deleteRules(at offsets: IndexSet) {
++        let ids = offsets.compactMap { $0 < rules.count ? rules[$0].id : nil }
++        store.update { $0.filterRules.removeAll { ids.contains($0.id) } }
++        log.record(source: "Filters", "Rule deleted")
++        refresh()
++    }
++
++    func setRedaction(_ options: NYXRedactionOptions) {
++        store.update { $0.redaction = options }
++        refresh()
++    }
++
++    func clearLog() {
++        log.clear()
++        refresh()
++    }
++
++    func refresh() {
++        rules = store.prefs.filterRules
++        redaction = store.prefs.redaction
++        events = log.query()
++    }
++}
++
++struct NYXToolkitRootView: View {
++    let close: () -> Void
++    @StateObject private var model = NYXToolkitModel()
++    @State private var tab = 0
++
++    var body: some View {
++        NavigationView {
++            VStack(spacing: 0) {
++                Picker("", selection: $tab) {
++                    Text(tk("Overview", "Обзор")).tag(0)
++                    Text(tk("Events", "События")).tag(1)
++                    Text(tk("Filters", "Фильтры")).tag(2)
++                    Text(tk("Streamer", "Стример")).tag(3)
++                }
++                .pickerStyle(SegmentedPickerStyle())
++                .padding(16)
++                switch tab {
++                case 0: NYXOverviewView(model: model)
++                case 1: NYXEventsView(model: model)
++                case 2: NYXFiltersView(model: model)
++                default: NYXStreamerView(model: model)
++                }
++            }
++            .navigationTitle("NYX Toolkit")
++            .navigationBarItems(trailing: Button(tk("Close", "Закрыть"), action: close))
++        }
++        .navigationViewStyle(StackNavigationViewStyle())
++        .accentColor(violet)
++        .preferredColorScheme(.dark)
++    }
++}
++
++struct NYXOverviewView: View {
++    @ObservedObject var model: NYXToolkitModel
++    var body: some View {
++        List {
++            Section(footer: Text(tk("Everything here is stored only on this device.", "Всё хранится только на этом устройстве."))) {
++                row(tk("Events recorded", "Записано событий"), "\(model.events.count)")
++                row(tk("Warnings", "Предупреждения"), "\(model.events.filter { $0.severity == .warning }.count)")
++                row(tk("Filter rules", "Правил фильтров"), "\(model.rules.count) (\(model.rules.filter { $0.enabled }.count) " + tk("on", "вкл") + ")")
++            }
++            Section(header: Text(tk("Status", "Статус"))) {
++                Text(tk("Filter rules and masking are tested here on text you type. They are not yet applied to your chats.", "Правила фильтров и маскировка проверяются здесь на введённом тексте. К вашим чатам они пока не применяются."))
++                    .font(.footnote).foregroundColor(.orange)
++            }
++        }
++        .listStyle(InsetGroupedListStyle())
++    }
++    private func row(_ title: String, _ value: String) -> some View {
++        HStack { Text(title); Spacer(); Text(value).foregroundColor(.secondary) }
++    }
++}
++
++struct NYXEventsView: View {
++    @ObservedObject var model: NYXToolkitModel
++    @State private var search = ""
++    @State private var confirmClear = false
++    private var shown: [NYXEvent] {
++        let needle = search.lowercased()
++        return needle.isEmpty ? model.events : model.events.filter { $0.text.lowercased().contains(needle) || $0.source.lowercased().contains(needle) }
++    }
++    var body: some View {
++        List {
++            Section {
++                TextField(tk("Search", "Поиск"), text: $search)
++                Button(tk("Clear log", "Очистить журнал")) { confirmClear = true }.foregroundColor(.red)
++            }
++            Section {
++                if shown.isEmpty { Text(tk("No events.", "Событий нет.")).foregroundColor(.secondary) }
++                ForEach(Array(shown.enumerated()), id: \.offset) { _, event in
++                    VStack(alignment: .leading, spacing: 2) {
++                        Text(event.text).font(.footnote).foregroundColor(event.severity == .warning ? .orange : .primary)
++                        Text("\(event.source) · \(event.date, style: .date) \(event.date, style: .time)").font(.caption2).foregroundColor(.secondary)
++                    }
++                }
++            }
++        }
++        .listStyle(InsetGroupedListStyle())
++        .alert(isPresented: $confirmClear) {
++            Alert(title: Text(tk("Clear the event log?", "Очистить журнал?")), primaryButton: .destructive(Text(tk("Clear", "Очистить"))) { model.clearLog() }, secondaryButton: .cancel())
++        }
++    }
++}
++
++struct NYXFiltersView: View {
++    @ObservedObject var model: NYXToolkitModel
++    @State private var name = ""
++    @State private var pattern = ""
++    @State private var kind = NYXFilterKind.keyword
++    @State private var action = NYXFilterAction.hide
++    @State private var error: String?
++    @State private var testText = ""
++
++    var body: some View {
++        List {
++            Section(header: Text(tk("New rule", "Новое правило"))) {
++                TextField(tk("Name", "Название"), text: $name)
++                TextField(tk("Text or pattern", "Текст или шаблон"), text: $pattern).autocapitalization(.none).disableAutocorrection(true)
++                Picker(tk("Match", "Совпадение"), selection: $kind) {
++                    Text(tk("Contains", "Содержит")).tag(NYXFilterKind.keyword)
++                    Text(tk("Whole word", "Слово целиком")).tag(NYXFilterKind.wholeWord)
++                    Text("Regex").tag(NYXFilterKind.regex)
++                }.pickerStyle(SegmentedPickerStyle())
++                Picker(tk("Action", "Действие"), selection: $action) {
++                    Text(tk("Hide", "Скрыть")).tag(NYXFilterAction.hide)
++                    Text(tk("Mute", "Без звука")).tag(NYXFilterAction.mute)
++                    Text(tk("Highlight", "Выделить")).tag(NYXFilterAction.highlight)
++                }.pickerStyle(SegmentedPickerStyle())
++                if let error = error { Text(error).font(.footnote).foregroundColor(.red) }
++                Button(tk("Add rule", "Добавить правило")) {
++                    let rule = NYXFilterRule(name: name.isEmpty ? pattern : name, kind: kind, pattern: pattern, action: action)
++                    switch model.addRule(rule) {
++                    case .ok: error = nil; name = ""; pattern = ""
++                    case .emptyPattern: error = tk("Enter a text or pattern.", "Введите текст или шаблон.")
++                    case .tooLong: error = tk("Too long or too many rules.", "Слишком длинно или слишком много правил.")
++                    case .invalidRegex: error = tk("The regular expression is not valid.", "Регулярное выражение некорректно.")
++                    }
++                }
++            }
++            Section(header: Text(tk("Rules", "Правила"))) {
++                if model.rules.isEmpty { Text(tk("No rules yet.", "Правил пока нет.")).foregroundColor(.secondary) }
++                ForEach(model.rules) { rule in
++                    Toggle(isOn: Binding(get: { rule.enabled }, set: { value in var r = rule; r.enabled = value; model.updateRule(r) })) {
++                        VStack(alignment: .leading) {
++                            Text(rule.name)
++                            Text("\(rule.kind.rawValue) · \(rule.action.rawValue) · \(rule.pattern)").font(.caption2).foregroundColor(.secondary).lineLimit(1)
++                        }
++                    }
++                }
++                .onDelete { model.deleteRules(at: $0) }
++            }
++            Section(header: Text(tk("Test", "Проверка")), footer: Text(testResult)) {
++                TextField(tk("Type a message to test", "Введите сообщение для проверки"), text: $testText)
++            }
++        }
++        .listStyle(InsetGroupedListStyle())
++    }
++
++    private var testResult: String {
++        if testText.isEmpty { return "" }
++        if let hit = NYXMessageFilter.decide(model.rules, text: testText) {
++            return tk("Would apply: ", "Сработает: ") + hit.action.rawValue + " (" + hit.rule.name + ")"
++        }
++        return tk("No rule matches.", "Ни одно правило не сработало.")
++    }
++}
++
++struct NYXStreamerView: View {
++    @ObservedObject var model: NYXToolkitModel
++    @State private var sample = "Call +49 151 2345 6789, mail me at name@example.com, card 4242 4242 4242 4242, https://t.me/example, @example_user"
++
++    var body: some View {
++        List {
++            Section(header: Text(tk("What to mask", "Что скрывать"))) {
++                toggle(tk("Phone numbers", "Номера телефонов"), \.phones)
++                toggle(tk("Emails", "Email"), \.emails)
++                toggle(tk("Links", "Ссылки"), \.links)
++                toggle(tk("Card numbers", "Номера карт"), \.cardNumbers)
++                toggle(tk("@usernames", "@юзернеймы"), \.usernames)
++            }
++            Section(header: Text(tk("Try it", "Попробуйте")), footer: Text(tk("Masking is shown here on sample text. It is not yet applied to chats, and may also mask date-like number groups.", "Маскировка показана на примере. В чатах она пока не применяется и может скрывать числа, похожие на даты."))) {
++                TextField(tk("Sample text", "Пример текста"), text: $sample)
++                Text(NYXRedactor.redact(sample, options: model.redaction)).font(.footnote)
++            }
++        }
++        .listStyle(InsetGroupedListStyle())
++    }
++
++    private func toggle(_ title: String, _ path: WritableKeyPath<NYXRedactionOptions, Bool>) -> some View {
++        Toggle(title, isOn: Binding(get: { model.redaction[keyPath: path] }, set: { value in
++            var options = model.redaction
++            options[keyPath: path] = value
++            model.setRedaction(options)
++        }))
++    }
++}
+diff --git a/Ghostgram/Features/NYXToolkit/Tests/NYXToolkitTests.swift b/Ghostgram/Features/NYXToolkit/Tests/NYXToolkitTests.swift
+new file mode 100644
+index 00000000..ab23133e
+--- /dev/null
++++ b/Ghostgram/Features/NYXToolkit/Tests/NYXToolkitTests.swift
+@@ -0,0 +1,113 @@
++import XCTest
++@testable import GGNYXToolkitCore
++
++final class NYXToolkitTests: XCTestCase {
++    private func tempURL() -> URL {
++        return FileManager.default.temporaryDirectory.appendingPathComponent("nyx-toolkit-\(UUID().uuidString)/f.json")
++    }
++
++    // MARK: filters
++    func testKeywordIsCaseAndDiacriticInsensitive() {
++        let rule = NYXFilterRule(name: "r", pattern: "cafe")
++        XCTAssertTrue(NYXMessageFilter.matches(rule, in: "Nice CAFÉ here"))
++        XCTAssertFalse(NYXMessageFilter.matches(rule, in: "tea"))
++    }
++
++    func testWholeWordDoesNotMatchInsideWords() {
++        let rule = NYXFilterRule(name: "r", kind: .wholeWord, pattern: "cat")
++        XCTAssertTrue(NYXMessageFilter.matches(rule, in: "a cat sat"))
++        XCTAssertFalse(NYXMessageFilter.matches(rule, in: "category"))
++        XCTAssertTrue(NYXMessageFilter.matches(NYXFilterRule(name: "r", kind: .wholeWord, pattern: "c++"), in: "I like c++ a lot"))
++    }
++
++    func testInvalidRegexIsRejectedAndNeverMatches() {
++        let rule = NYXFilterRule(name: "r", kind: .regex, pattern: "([")
++        XCTAssertEqual(NYXMessageFilter.validate(rule), .invalidRegex)
++        XCTAssertFalse(NYXMessageFilter.matches(rule, in: "(["))
++    }
++
++    func testValidationLimits() {
++        XCTAssertEqual(NYXMessageFilter.validate(NYXFilterRule(name: "r", pattern: "  ")), .emptyPattern)
++        XCTAssertEqual(NYXMessageFilter.validate(NYXFilterRule(name: "r", pattern: String(repeating: "a", count: 201))), .tooLong)
++    }
++
++    func testDisabledRuleDoesNotMatch() {
++        XCTAssertFalse(NYXMessageFilter.matches(NYXFilterRule(name: "r", enabled: false, pattern: "x"), in: "x"))
++    }
++
++    func testStrongestActionWins() {
++        let rules = [
++            NYXFilterRule(name: "a", pattern: "spam", action: .highlight),
++            NYXFilterRule(name: "b", pattern: "spam", action: .hide),
++            NYXFilterRule(name: "c", pattern: "spam", action: .mute)
++        ]
++        XCTAssertEqual(NYXMessageFilter.decide(rules, text: "spam")?.action, .hide)
++        XCTAssertNil(NYXMessageFilter.decide(rules, text: "ok"))
++    }
++
++    // MARK: redactor
++    func testRedactsEmailLinkAndPhone() {
++        let text = "mail me a.b@example.com or see https://example.com/x?y=1 call +49 151 2345 6789"
++        let out = NYXRedactor.redact(text)
++        XCTAssertFalse(out.contains("example.com"))
++        XCTAssertFalse(out.contains("2345"))
++        XCTAssertTrue(out.contains(NYXRedactor.mask))
++        XCTAssertTrue(out.hasPrefix("mail me"))
++    }
++
++    func testCardNumbersNeedLuhn() {
++        XCTAssertFalse(NYXRedactor.redact("pay 4242 4242 4242 4242 now", options: onlyCards()).contains("4242"))
++        XCTAssertTrue(NYXRedactor.redact("id 1234 5678 9012 3456", options: onlyCards()).contains("1234"))
++    }
++
++    func testOptionsCanBeSwitchedOff() {
++        var options = NYXRedactionOptions()
++        options.emails = false
++        XCTAssertTrue(NYXRedactor.redact("a@b.com", options: options).contains("a@b.com"))
++        options.usernames = true
++        XCTAssertFalse(NYXRedactor.redact("ping @someone_1 please", options: options).contains("someone"))
++    }
++
++    private func onlyCards() -> NYXRedactionOptions {
++        var o = NYXRedactionOptions()
++        o.phones = false; o.emails = false; o.links = false
++        return o
++    }
++
++    // MARK: event log + json file
++    func testEventLogIsCappedAndNewestFirst() {
++        let log = NYXEventLog(url: self.tempURL())
++        for i in 0..<(NYXEventLog.maxEvents + 5) { log.record(source: "t", "e\(i)") }
++        XCTAssertEqual(log.events.count, NYXEventLog.maxEvents)
++        XCTAssertEqual(log.query().first?.text, "e\(NYXEventLog.maxEvents + 4)")
++    }
++
++    func testEventTextIsCutAndSearchWorks() {
++        let log = NYXEventLog(url: self.tempURL())
++        log.record(.warning, source: "Gifts", String(repeating: "x", count: 1000))
++        log.record(source: "Import", "restored")
++        XCTAssertEqual(log.events.first?.text.count, NYXEventLog.maxTextLength)
++        XCTAssertEqual(log.query(severity: .warning).count, 1)
++        XCTAssertEqual(log.query(search: "REST").count, 1)
++    }
++
++    func testPersistenceAndCorruptionRecovery() throws {
++        let url = self.tempURL()
++        let log = NYXEventLog(url: url)
++        log.record(source: "a", "one")
++        log.record(source: "a", "two")
++        try Data("broken".utf8).write(to: url)
++        let reloaded = NYXEventLog(url: url)
++        XCTAssertTrue(reloaded.wasRecovered)
++        XCTAssertEqual(reloaded.events.count, 1)   // restored from the backup of the previous good save
++        let names = (try? FileManager.default.contentsOfDirectory(atPath: url.deletingLastPathComponent().path)) ?? []
++        XCTAssertTrue(names.contains(where: { $0.contains("corrupt-") }))
++    }
++
++    func testStoreRejectsInvalidRules() {
++        let store = NYXToolkitStore(url: self.tempURL())
++        XCTAssertEqual(store.addRule(NYXFilterRule(name: "r", kind: .regex, pattern: "([")), .invalidRegex)
++        XCTAssertEqual(store.addRule(NYXFilterRule(name: "r", pattern: "ok")), .ok)
++        XCTAssertEqual(store.prefs.filterRules.count, 1)
++    }
++}
+diff --git a/Ghostgram/Features/NYXTools/Core/NYXJSONFileStore.swift b/Ghostgram/Features/NYXTools/Core/NYXJSONFileStore.swift
+new file mode 100644
+index 00000000..24df0d30
+--- /dev/null
++++ b/Ghostgram/Features/NYXTools/Core/NYXJSONFileStore.swift
+@@ -0,0 +1,85 @@
++import Foundation
++
++public enum NYXStoreIssue: Equatable {
++    case restoredFromBackup
++    case resetAfterCorruption
++}
++
++/// One Codable value in one JSON file: atomic writes, previous good file kept as `.bak`, a damaged file is
++/// restored from the backup or set aside as `.corrupt-<time>` (never silently deleted).
++public final class NYXJSONFileStore<Value: Codable & Equatable> {
++    private let fileURL: URL
++    private let lock = NSLock()
++    private var value: Value
++    public private(set) var loadIssue: NYXStoreIssue?
++
++    public init(fileURL: URL, defaultValue: Value) {
++        self.fileURL = fileURL
++        self.value = defaultValue
++        try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
++        self.load(defaultValue)
++    }
++
++    public var current: Value {
++        self.lock.lock()
++        defer { self.lock.unlock() }
++        return self.value
++    }
++
++    /// `normalize` runs after every change (caps, clean-up).
++    public func update(normalize: (inout Value) -> Void = { _ in }, _ change: (inout Value) -> Void) {
++        self.lock.lock()
++        defer { self.lock.unlock() }
++        var next = self.value
++        change(&next)
++        normalize(&next)
++        if next != self.value {
++            self.value = next
++            self.save()
++        }
++    }
++
++    private var backupURL: URL { return self.fileURL.appendingPathExtension("bak") }
++
++    private func read(_ url: URL) -> Value? {
++        guard let data = try? Data(contentsOf: url) else { return nil }
++        let decoder = JSONDecoder()
++        decoder.dateDecodingStrategy = .iso8601
++        return try? decoder.decode(Value.self, from: data)
++    }
++
++    private func load(_ defaultValue: Value) {
++        let fm = FileManager.default
++        if fm.fileExists(atPath: self.fileURL.path) {
++            if let main = self.read(self.fileURL) {
++                self.value = main
++                return
++            }
++            let stamp = Int(Date().timeIntervalSince1970)
++            try? fm.moveItem(at: self.fileURL, to: self.fileURL.appendingPathExtension("corrupt-\(stamp)"))
++            if let backup = self.read(self.backupURL) {
++                self.value = backup
++                self.loadIssue = .restoredFromBackup
++                self.save()
++            } else {
++                self.loadIssue = .resetAfterCorruption
++            }
++        } else if let backup = self.read(self.backupURL) {
++            self.value = backup
++            self.loadIssue = .restoredFromBackup
++        }
++    }
++
++    private func save() {
++        let encoder = JSONEncoder()
++        encoder.outputFormatting = [.sortedKeys]
++        encoder.dateEncodingStrategy = .iso8601
++        guard let data = try? encoder.encode(self.value) else { return }
++        let fm = FileManager.default
++        if fm.fileExists(atPath: self.fileURL.path), self.read(self.fileURL) != nil {
++            try? fm.removeItem(at: self.backupURL)
++            try? fm.copyItem(at: self.fileURL, to: self.backupURL)
++        }
++        try? data.write(to: self.fileURL, options: [.atomic])
++    }
++}
+diff --git a/Ghostgram/Features/NYXTools/Core/NYXLogic.swift b/Ghostgram/Features/NYXTools/Core/NYXLogic.swift
+new file mode 100644
+index 00000000..6aa7b3fc
+--- /dev/null
++++ b/Ghostgram/Features/NYXTools/Core/NYXLogic.swift
+@@ -0,0 +1,111 @@
++import Foundation
++
++// MARK: Filter engine
++
++public enum NYXFilterEngine {
++    /// nil when the pattern is valid, otherwise a short reason.
++    public static func validate(_ rule: NYXFilterRule) -> String? {
++        if rule.pattern.isEmpty { return "empty" }
++        if rule.pattern.count > NYXToolsPrefs.maxPatternLength { return "too long" }
++        if rule.isRegex, (try? NSRegularExpression(pattern: rule.pattern, options: [])) == nil { return "invalid regex" }
++        return nil
++    }
++
++    public static func matches(_ rule: NYXFilterRule, in text: String) -> Bool {
++        guard rule.enabled, validate(rule) == nil else { return false }
++        if rule.isRegex {
++            let options: NSRegularExpression.Options = rule.caseSensitive ? [] : [.caseInsensitive]
++            guard let regex = try? NSRegularExpression(pattern: rule.pattern, options: options) else { return false }
++            // Long inputs are cut so a heavy pattern can not stall the UI.
++            let sample = String(text.prefix(5000))
++            return regex.firstMatch(in: sample, options: [], range: NSRange(sample.startIndex..., in: sample)) != nil
++        }
++        return rule.caseSensitive ? text.contains(rule.pattern) : text.range(of: rule.pattern, options: .caseInsensitive) != nil
++    }
++
++    /// Rules that match, in list order.
++    public static func matching(_ rules: [NYXFilterRule], text: String) -> [NYXFilterRule] {
++        return rules.filter { NYXFilterEngine.matches($0, in: text) }
++    }
++
++    /// The strongest action among the matches: hide > mute > highlight.
++    public static func decision(_ rules: [NYXFilterRule], text: String) -> NYXFilterAction? {
++        let actions = Set(NYXFilterEngine.matching(rules, text: text).map { $0.action })
++        for action in [NYXFilterAction.hide, .mute, .highlight] where actions.contains(action) { return action }
++        return nil
++    }
++}
++
++// MARK: Redaction (Streamer mode preview and a "copy safe text" tool)
++
++public struct NYXRedactionOptions: Codable, Equatable {
++    public var phones = true
++    public var emails = true
++    public var cards = true
++    public var links = false
++    public init() {}
++}
++
++public enum NYXRedactor {
++    private static func regex(_ pattern: String) -> NSRegularExpression? {
++        return try? NSRegularExpression(pattern: pattern, options: [])
++    }
++
++    public static func redact(_ text: String, options: NYXRedactionOptions) -> String {
++        var result = text
++        if options.cards { result = NYXRedactor.maskCards(result) }
++        if options.emails { result = NYXRedactor.replace(result, pattern: "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}", with: "•••@•••") }
++        if options.links { result = NYXRedactor.replace(result, pattern: "(https?://|t\\.me/)[^\\s]+", with: "[link hidden]") }
++        if options.phones { result = NYXRedactor.replace(result, pattern: "\\+?\\d[\\d\\s().-]{7,}\\d", with: "+••• ••• ••••") }
++        return result
++    }
++
++    private static func replace(_ text: String, pattern: String, with template: String) -> String {
++        guard let regex = NYXRedactor.regex(pattern) else { return text }
++        return regex.stringByReplacingMatches(in: text, options: [], range: NSRange(text.startIndex..., in: text), withTemplate: NSRegularExpression.escapedTemplate(for: template))
++    }
++
++    /// Card numbers: 13–19 digits (spaces/dashes allowed) that pass the Luhn check.
++    private static func maskCards(_ text: String) -> String {
++        guard let regex = NYXRedactor.regex("\\b(?:\\d[ -]?){12,18}\\d\\b") else { return text }
++        var result = text
++        let matches = regex.matches(in: text, options: [], range: NSRange(text.startIndex..., in: text))
++        for match in matches.reversed() {
++            guard let range = Range(match.range, in: result) else { continue }
++            let digits = result[range].filter { $0.isNumber }
++            if (13...19).contains(digits.count), luhn(String(digits)) {
++                result.replaceSubrange(range, with: "•••• •••• •••• " + digits.suffix(4))
++            }
++        }
++        return result
++    }
++
++    static func luhn(_ digits: String) -> Bool {
++        var sum = 0
++        for (index, character) in digits.reversed().enumerated() {
++            guard var value = character.wholeNumberValue else { return false }
++            if index % 2 == 1 {
++                value *= 2
++                if value > 9 { value -= 9 }
++            }
++            sum += value
++        }
++        return sum % 10 == 0
++    }
++}
++
++// MARK: Templates
++
++public enum NYXTemplateRenderer {
++    /// Replaces {date}, {time}, {weekday} and {name}. Unknown placeholders stay as they are.
++    public static func render(_ body: String, now: Date, name: String = "", calendar: Calendar = .current, locale: Locale = .current) -> String {
++        let date = DateFormatter(); date.locale = locale; date.calendar = calendar; date.dateStyle = .medium; date.timeStyle = .none
++        let time = DateFormatter(); time.locale = locale; time.calendar = calendar; time.dateStyle = .none; time.timeStyle = .short
++        let weekday = DateFormatter(); weekday.locale = locale; weekday.calendar = calendar; weekday.dateFormat = "EEEE"
++        return body
++            .replacingOccurrences(of: "{date}", with: date.string(from: now))
++            .replacingOccurrences(of: "{time}", with: time.string(from: now))
++            .replacingOccurrences(of: "{weekday}", with: weekday.string(from: now))
++            .replacingOccurrences(of: "{name}", with: name)
++    }
++}
+diff --git a/Ghostgram/Features/NYXTools/Core/NYXToolsData.swift b/Ghostgram/Features/NYXTools/Core/NYXToolsData.swift
+new file mode 100644
+index 00000000..bc5287a8
+--- /dev/null
++++ b/Ghostgram/Features/NYXTools/Core/NYXToolsData.swift
+@@ -0,0 +1,106 @@
++import Foundation
++
++// MARK: Event log
++
++public struct NYXEvent: Codable, Equatable {
++    public enum Category: String, Codable, CaseIterable { case security, privacy, data, filters, system }
++    public var date: Date
++    public var category: Category
++    public var text: String
++    public init(date: Date, category: Category, text: String) {
++        self.date = date
++        self.category = category
++        self.text = text
++    }
++}
++
++// MARK: Filter rules
++
++public enum NYXFilterAction: String, Codable, CaseIterable { case highlight, mute, hide }
++
++public struct NYXFilterRule: Codable, Equatable, Identifiable {
++    public var id: UUID
++    public var name: String
++    public var pattern: String
++    public var isRegex: Bool
++    public var caseSensitive: Bool
++    public var action: NYXFilterAction
++    public var enabled: Bool
++
++    public init(id: UUID = UUID(), name: String, pattern: String, isRegex: Bool = false, caseSensitive: Bool = false, action: NYXFilterAction = .highlight, enabled: Bool = true) {
++        self.id = id
++        self.name = name
++        self.pattern = pattern
++        self.isRegex = isRegex
++        self.caseSensitive = caseSensitive
++        self.action = action
++        self.enabled = enabled
++    }
++}
++
++// MARK: Templates
++
++public struct NYXTemplate: Codable, Equatable, Identifiable {
++    public var id: UUID
++    public var title: String
++    public var body: String
++    public init(id: UUID = UUID(), title: String, body: String) {
++        self.id = id
++        self.title = title
++        self.body = body
++    }
++}
++
++// MARK: Prefs
++
++public struct NYXToolsPrefs: Codable, Equatable {
++    public static let maxEvents = 500
++    public static let maxRules = 100
++    public static let maxTemplates = 100
++    public static let maxPatternLength = 200
++    public static let maxBodyLength = 4000
++
++    public var events: [NYXEvent] = []
++    public var rules: [NYXFilterRule] = []
++    public var templates: [NYXTemplate] = []
++    public var redaction: NYXRedactionOptions = NYXRedactionOptions()
++
++    public init() {}
++
++    public static func normalize(_ prefs: inout NYXToolsPrefs) {
++        if prefs.events.count > maxEvents { prefs.events = Array(prefs.events.suffix(maxEvents)) }
++        if prefs.rules.count > maxRules { prefs.rules = Array(prefs.rules.prefix(maxRules)) }
++        for index in prefs.rules.indices where prefs.rules[index].pattern.count > maxPatternLength {
++            prefs.rules[index].pattern = String(prefs.rules[index].pattern.prefix(maxPatternLength))
++        }
++        if prefs.templates.count > maxTemplates { prefs.templates = Array(prefs.templates.prefix(maxTemplates)) }
++        for index in prefs.templates.indices where prefs.templates[index].body.count > maxBodyLength {
++            prefs.templates[index].body = String(prefs.templates[index].body.prefix(maxBodyLength))
++        }
++    }
++}
++
++/// Convenience wrapper with the app-wide file location.
++public final class NYXToolsStore {
++    public static let shared = NYXToolsStore(fileURL: NYXToolsStore.defaultURL())
++    public let store: NYXJSONFileStore<NYXToolsPrefs>
++
++    public static func defaultURL() -> URL {
++        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("NYXGram", isDirectory: true)
++        return base.appendingPathComponent("tools.json")
++    }
++
++    public init(fileURL: URL) {
++        self.store = NYXJSONFileStore(fileURL: fileURL, defaultValue: NYXToolsPrefs())
++    }
++
++    public var current: NYXToolsPrefs { return self.store.current }
++
++    public func update(_ change: (inout NYXToolsPrefs) -> Void) {
++        self.store.update(normalize: NYXToolsPrefs.normalize, change)
++    }
++
++    public func log(_ category: NYXEvent.Category, _ text: String, now: Date = Date()) {
++        self.update { $0.events.append(NYXEvent(date: now, category: category, text: text)) }
++    }
++}
+diff --git a/Ghostgram/Features/NYXTools/Tests/NYXToolsTests.swift b/Ghostgram/Features/NYXTools/Tests/NYXToolsTests.swift
+new file mode 100644
+index 00000000..f4703f0c
+--- /dev/null
++++ b/Ghostgram/Features/NYXTools/Tests/NYXToolsTests.swift
+@@ -0,0 +1,68 @@
++import XCTest
++@testable import GGNYXToolsCore
++
++final class NYXToolsTests: XCTestCase {
++    func testPlainAndCaseRules() {
++        var rule = NYXFilterRule(name: "r", pattern: "Promo")
++        XCTAssertTrue(NYXFilterEngine.matches(rule, in: "big promo today"))
++        rule.caseSensitive = true
++        XCTAssertFalse(NYXFilterEngine.matches(rule, in: "big promo today"))
++    }
++
++    func testRegexValidationAndMatch() {
++        var rule = NYXFilterRule(name: "r", pattern: "(", isRegex: true)
++        XCTAssertEqual(NYXFilterEngine.validate(rule), "invalid regex")
++        XCTAssertFalse(NYXFilterEngine.matches(rule, in: "("))
++        rule.pattern = "\\d{3}-\\d{2}"
++        XCTAssertNil(NYXFilterEngine.validate(rule))
++        XCTAssertTrue(NYXFilterEngine.matches(rule, in: "code 123-45"))
++    }
++
++    func testDisabledAndEmptyNeverMatch() {
++        XCTAssertFalse(NYXFilterEngine.matches(NYXFilterRule(name: "r", pattern: "x", enabled: false), in: "x"))
++        XCTAssertFalse(NYXFilterEngine.matches(NYXFilterRule(name: "r", pattern: ""), in: "x"))
++    }
++
++    func testDecisionPriority() {
++        let rules = [NYXFilterRule(name: "a", pattern: "spam", action: .mute), NYXFilterRule(name: "b", pattern: "spam", action: .hide), NYXFilterRule(name: "c", pattern: "zzz", action: .highlight)]
++        XCTAssertEqual(NYXFilterEngine.decision(rules, text: "spam"), .hide)
++        XCTAssertNil(NYXFilterEngine.decision(rules, text: "clean"))
++    }
++
++    func testRedactor() {
++        var options = NYXRedactionOptions()
++        XCTAssertTrue(NYXRedactor.redact("call +375 29 123-45-67 now", options: options).contains("+•••"))
++        XCTAssertFalse(NYXRedactor.redact("mail me a@b.com", options: options).contains("a@b.com"))
++        // 4111 1111 1111 1111 passes Luhn, 4111 1111 1111 1112 does not.
++        XCTAssertTrue(NYXRedactor.redact("card 4111 1111 1111 1111", options: options).hasSuffix("1111"))
++        XCTAssertFalse(NYXRedactor.redact("card 4111 1111 1111 1111", options: options).contains("4111 1111"))
++        options.links = true
++        XCTAssertTrue(NYXRedactor.redact("see https://example.com/x", options: options).contains("[link hidden]"))
++        XCTAssertEqual(NYXRedactor.redact("plain text", options: options), "plain text")
++    }
++
++    func testLuhn() {
++        XCTAssertTrue(NYXRedactor.luhn("4111111111111111"))
++        XCTAssertFalse(NYXRedactor.luhn("4111111111111112"))
++    }
++
++    func testTemplateKeepsUnknownPlaceholders() {
++        let out = NYXTemplateRenderer.render("Hi {name}, {unknown}", now: Date(timeIntervalSince1970: 0), name: "Max")
++        XCTAssertEqual(out, "Hi Max, {unknown}")
++    }
++
++    func testStoreCapsAndBackup() throws {
++        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("nyx-tools-\(UUID().uuidString)")
++        defer { try? FileManager.default.removeItem(at: dir) }
++        let file = dir.appendingPathComponent("tools.json")
++        let store = NYXToolsStore(fileURL: file)
++        for i in 0..<(NYXToolsPrefs.maxEvents + 10) { store.log(.system, "e\(i)", now: Date(timeIntervalSince1970: Double(i))) }
++        XCTAssertEqual(store.current.events.count, NYXToolsPrefs.maxEvents)
++        XCTAssertEqual(store.current.events.last?.text, "e\(NYXToolsPrefs.maxEvents + 9)")
++        XCTAssertTrue(FileManager.default.fileExists(atPath: file.appendingPathExtension("bak").path))
++        try Data("bad".utf8).write(to: file)
++        let reloaded = NYXToolsStore(fileURL: file)
++        XCTAssertEqual(reloaded.store.loadIssue, .restoredFromBackup)
++        XCTAssertFalse(reloaded.current.events.isEmpty)
++    }
++}
+diff --git a/Ghostgram/Features/Sources/GGFeatures.swift b/Ghostgram/Features/Sources/GGFeatures.swift
+index f3f1de8c..1068bfa5 100644
+--- a/Ghostgram/Features/Sources/GGFeatures.swift
++++ b/Ghostgram/Features/Sources/GGFeatures.swift
+@@ -16,6 +16,7 @@ import GGProfileExport
+ import GGExtras
+ import GGRegDate
+ import GGGiftsStudio
++import GGNYXToolkit
+ 
+ /// Aggregator of the feature modules, called from `AppDelegate` (see FOUNDATION_SPEC §2):
+ /// `GGCore.bootstrap` → `GGFeatures.registerAll()` → `GGCore.runGlobalMigrations()` →
+@@ -44,5 +45,7 @@ public enum GGFeatures {
+         // NYXGram: GGRegDateModule is not registered (see NYXGRAM_CHANGES.md).
+         // NYXGram: Gifts Studio (read-only catalog/collection, local layouts).
+         GGGiftsStudioModule.register()
++        // NYXGram: Toolkit (event log, filter rules, streamer masking tester).
++        GGNYXToolkitModule.register()
+     }
+ }
+diff --git a/NYXGram/docs/TOOLKIT.md b/NYXGram/docs/TOOLKIT.md
+new file mode 100644
+index 00000000..a466f1d4
+--- /dev/null
++++ b/NYXGram/docs/TOOLKIT.md
+@@ -0,0 +1,9 @@
++# NYX Toolkit
++
++Status: **written, statically checked only. Not compiled, tests not run** (no Swift toolchain was available).
++
++- **Event log** (`NYXEventLog`): local, capped at 500 events, text cut at 300 chars, search/severity filter. Currently records what the Toolkit itself does (rules added/deleted, recovery of damaged files). Other features do not write to it yet.
++- **Message filter rules** (`NYXMessageFilter`): contains / whole word / validated regex, actions hide / mute / highlight, strongest action wins. Pattern ≤200 chars, ≤100 rules. **Not yet applied to chats**: the screen tests rules on text you type.
++- **Streamer masking** (`NYXRedactor`): masks phones, emails, links, Luhn-valid card numbers, optionally @usernames. **Not yet applied to chats**; demo on sample text. May also mask date-like number groups.
++- Storage: `Application Support/NYXGram/{event-log,toolkit}.json`, atomic writes, `.bak`, damaged files kept as `.corrupt-<time>`.
++- Menu: «More» → NYX Toolkit.
+-- 
+2.43.0
+
