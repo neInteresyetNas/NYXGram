@@ -27,7 +27,7 @@ jobs:
           cd src
           git checkout "$BASE_COMMIT"
           # Patches are applied in this order. Add new ones (nyxgram3.patch, ...) to the list.
-          for p in nyxgram2.patch gifts-studio.patch; do
+          for p in nyxgram2.patch gifts-studio.patch nyx-toolkit.patch; do
             git apply --whitespace=nowarn "../overlay/$p"
           done
           git config user.name "NYXGram"
