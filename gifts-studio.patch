@@ -1,0 +1,1953 @@
+From 9f863cabdf83a0d468bb7c9c591fc24b17d98edf Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 10 Nov 2026 08:39:27 +0300
+Subject: [PATCH] Add Gifts Studio (read-only catalog/collection, local
+ layouts, store, tests)
+
+Written and statically checked only; not compiled or run.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011LR6mJrjR4QkTzyEjdJcyD
+---
+ Ghostgram/Features/BUILD                      |   2 +
+ Ghostgram/Features/GiftsStudio/BUILD          |  61 +++
+ .../GiftsStudio/Core/NYXGiftModels.swift      | 114 ++++
+ .../GiftsStudio/Core/NYXGiftQuery.swift       | 103 ++++
+ .../GiftsStudio/Core/NYXGiftsPrefs.swift      | 101 ++++
+ .../GiftsStudio/Core/NYXGiftsStore.swift      | 186 +++++++
+ .../Scripts/check-gifts-forbidden.sh          |  10 +
+ .../Sources/GGGiftsStudioModule.swift         |  40 ++
+ .../GiftsStudio/Sources/NYXGiftsService.swift | 241 ++++++++
+ .../Sources/NYXGiftsViewModel.swift           | 210 +++++++
+ .../GiftsStudio/Sources/NYXGiftsViews.swift   | 514 ++++++++++++++++++
+ .../GiftsStudio/Tests/NYXGiftQueryTests.swift |  74 +++
+ .../Tests/NYXGiftsStoreTests.swift            | 119 ++++
+ Ghostgram/Features/Sources/GGFeatures.swift   |   3 +
+ NYXGram/docs/GIFTS_STUDIO.md                  |  25 +
+ 15 files changed, 1803 insertions(+)
+ create mode 100644 Ghostgram/Features/GiftsStudio/BUILD
+ create mode 100644 Ghostgram/Features/GiftsStudio/Core/NYXGiftModels.swift
+ create mode 100644 Ghostgram/Features/GiftsStudio/Core/NYXGiftQuery.swift
+ create mode 100644 Ghostgram/Features/GiftsStudio/Core/NYXGiftsPrefs.swift
+ create mode 100644 Ghostgram/Features/GiftsStudio/Core/NYXGiftsStore.swift
+ create mode 100755 Ghostgram/Features/GiftsStudio/Scripts/check-gifts-forbidden.sh
+ create mode 100644 Ghostgram/Features/GiftsStudio/Sources/GGGiftsStudioModule.swift
+ create mode 100644 Ghostgram/Features/GiftsStudio/Sources/NYXGiftsService.swift
+ create mode 100644 Ghostgram/Features/GiftsStudio/Sources/NYXGiftsViewModel.swift
+ create mode 100644 Ghostgram/Features/GiftsStudio/Sources/NYXGiftsViews.swift
+ create mode 100644 Ghostgram/Features/GiftsStudio/Tests/NYXGiftQueryTests.swift
+ create mode 100644 Ghostgram/Features/GiftsStudio/Tests/NYXGiftsStoreTests.swift
+ create mode 100644 NYXGram/docs/GIFTS_STUDIO.md
+
+diff --git a/Ghostgram/Features/BUILD b/Ghostgram/Features/BUILD
+index 5c2795cf..d7b64456 100644
+--- a/Ghostgram/Features/BUILD
++++ b/Ghostgram/Features/BUILD
+@@ -30,6 +30,8 @@ swift_library(
+         "//Ghostgram/Features/Extras:GGExtras",
+         # W7-RD2: «Дата регистрации»
+         "//Ghostgram/Features/RegDate:GGRegDate",
++        # NYXGram: Gifts Studio
++        "//Ghostgram/Features/GiftsStudio:GGGiftsStudio",
+     ],
+     visibility = [
+         "//visibility:public",
+diff --git a/Ghostgram/Features/GiftsStudio/BUILD b/Ghostgram/Features/GiftsStudio/BUILD
+new file mode 100644
+index 00000000..d392ea2d
+--- /dev/null
++++ b/Ghostgram/Features/GiftsStudio/BUILD
+@@ -0,0 +1,61 @@
++load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
++
++# NYXGram Gifts Studio. Two targets:
++#
++#   GGGiftsStudioCore — pure Swift (Foundation only): models, search/filter/sort, the versioned local
++#                       store with backup and corruption handling. No Telegram code, so it is unit-testable.
++#   GGGiftsStudio     — the feature: reads the real Telegram gift data, SwiftUI screens, menu row.
++#
++# Gifts Studio never buys, sends, transfers, converts, withdraws, upgrades or deletes gifts
++# (Scripts/check-gifts-forbidden.sh checks the sources for those calls).
++swift_library(
++    name = "GGGiftsStudioCore",
++    module_name = "GGGiftsStudioCore",
++    srcs = glob([
++        "Core/**/*.swift",
++    ]),
++    copts = [
++        "-warnings-as-errors",
++    ],
++    visibility = [
++        "//visibility:public",
++    ],
++)
++
++swift_library(
++    name = "GGGiftsStudio",
++    module_name = "GGGiftsStudio",
++    srcs = glob([
++        "Sources/**/*.swift",
++    ]),
++    copts = [
++        "-warnings-as-errors",
++    ],
++    deps = [
++        ":GGGiftsStudioCore",
++        "//Ghostgram/GGCore:GGCore",
++        "//Ghostgram/GGHooks:GGHooks",
++        "//Ghostgram/GGSettingsUI:GGSettingsUI",
++        "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
++        "//submodules/Postbox:Postbox",
++        "//submodules/TelegramCore:TelegramCore",
++        "//submodules/AccountContext:AccountContext",
++        "//submodules/Display:Display",
++    ],
++    visibility = [
++        "//visibility:public",
++    ],
++)
++
++swift_test(
++    name = "GGGiftsStudioCoreTests",
++    srcs = glob([
++        "Tests/**/*.swift",
++    ]),
++    copts = [
++        "-warnings-as-errors",
++    ],
++    deps = [
++        ":GGGiftsStudioCore",
++    ],
++)
+diff --git a/Ghostgram/Features/GiftsStudio/Core/NYXGiftModels.swift b/Ghostgram/Features/GiftsStudio/Core/NYXGiftModels.swift
+new file mode 100644
+index 00000000..6cc17083
+--- /dev/null
++++ b/Ghostgram/Features/GiftsStudio/Core/NYXGiftModels.swift
+@@ -0,0 +1,114 @@
++import Foundation
++
++/// Kinds of gifts as Telegram describes them. Nothing here is invented: a value that Telegram does not
++/// provide stays nil and the UI shows nothing for it.
++public enum NYXGiftKind: String, Codable, CaseIterable {
++    /// Unlimited catalog gift.
++    case regular
++    /// Limited-supply catalog gift.
++    case limited
++    /// Collectible (upgraded) gift.
++    case unique
++}
++
++/// Ownership data of a gift in the user's own collection.
++public struct NYXGiftOwnership: Equatable {
++    /// Stable string for the Telegram reference of this exact gift (see `NYXGiftsService`).
++    public let referenceKey: String
++    public let savedToProfile: Bool
++    public let pinnedToTop: Bool
++    public let date: Int32
++    public let fromName: String?
++
++    public init(referenceKey: String, savedToProfile: Bool, pinnedToTop: Bool, date: Int32, fromName: String?) {
++        self.referenceKey = referenceKey
++        self.savedToProfile = savedToProfile
++        self.pinnedToTop = pinnedToTop
++        self.date = date
++        self.fromName = fromName
++    }
++}
++
++/// One gift, from the catalog or from the user's collection.
++public struct NYXGiftItem: Equatable, Identifiable {
++    /// "gift:<id>" for catalog entries, "own:<referenceKey>" for collection entries.
++    public let id: String
++    public let title: String
++    public let kind: NYXGiftKind
++    /// Catalog price in Stars, when Telegram gives one.
++    public let priceStars: Int64?
++    public let remains: Int32?
++    public let total: Int32?
++    /// Serial number of a collectible.
++    public let number: Int32?
++    /// Rarity text exactly as derived from Telegram's data (permille or Telegram's own rarity name).
++    public let rarity: String?
++    /// Names of the collectible's model, pattern and backdrop, when present.
++    public let attributes: [String]
++    public let requiresPremium: Bool
++    public let isBirthday: Bool
++    /// Tiny blurred preview that ships with the gift file; the real image or animation is not loaded here.
++    public let thumbnail: Data?
++    /// Position in the source list (the order Telegram returned it in).
++    public let order: Int
++    public let ownership: NYXGiftOwnership?
++
++    public init(id: String, title: String, kind: NYXGiftKind, priceStars: Int64? = nil, remains: Int32? = nil, total: Int32? = nil, number: Int32? = nil, rarity: String? = nil, attributes: [String] = [], requiresPremium: Bool = false, isBirthday: Bool = false, thumbnail: Data? = nil, order: Int, ownership: NYXGiftOwnership? = nil) {
++        self.id = id
++        self.title = title
++        self.kind = kind
++        self.priceStars = priceStars
++        self.remains = remains
++        self.total = total
++        self.number = number
++        self.rarity = rarity
++        self.attributes = attributes
++        self.requiresPremium = requiresPremium
++        self.isBirthday = isBirthday
++        self.thumbnail = thumbnail
++        self.order = order
++        self.ownership = ownership
++    }
++
++    /// Key used for local favorites, notes and compositions. For collection entries it is the reference
++    /// key (it identifies the exact gift); for catalog entries it is the catalog id.
++    public var storageKey: String {
++        return self.ownership?.referenceKey ?? self.id
++    }
++}
++
++public enum NYXGiftSort: String, Codable, CaseIterable {
++    case newest
++    case priceLow
++    case priceHigh
++    case name
++    /// Smaller total supply first (supply is the only scarcity measure Telegram provides for every gift).
++    case scarcest
++}
++
++public enum NYXVisibilityFilter: String, Codable, CaseIterable {
++    case all
++    case shown
++    case hidden
++}
++
++public struct NYXGiftFilter: Codable, Equatable {
++    public var search: String
++    /// Empty = all kinds.
++    public var kinds: Set<NYXGiftKind>
++    public var onlyFavorites: Bool
++    public var onlyPinned: Bool
++    public var visibility: NYXVisibilityFilter
++
++    public init(search: String = "", kinds: Set<NYXGiftKind> = [], onlyFavorites: Bool = false, onlyPinned: Bool = false, visibility: NYXVisibilityFilter = .all) {
++        self.search = search
++        self.kinds = kinds
++        self.onlyFavorites = onlyFavorites
++        self.onlyPinned = onlyPinned
++        self.visibility = visibility
++    }
++
++    public var isDefault: Bool {
++        return self == NYXGiftFilter()
++    }
++}
+diff --git a/Ghostgram/Features/GiftsStudio/Core/NYXGiftQuery.swift b/Ghostgram/Features/GiftsStudio/Core/NYXGiftQuery.swift
+new file mode 100644
+index 00000000..a21a059a
+--- /dev/null
++++ b/Ghostgram/Features/GiftsStudio/Core/NYXGiftQuery.swift
+@@ -0,0 +1,103 @@
++import Foundation
++
++/// Pure search / filter / sort over a list of gifts. No Telegram types, fully unit-testable.
++public enum NYXGiftQuery {
++    public static func apply(_ items: [NYXGiftItem], filter: NYXGiftFilter, sort: NYXGiftSort, favorites: Set<String>) -> [NYXGiftItem] {
++        let needle = filter.search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
++        let filtered = items.filter { item in
++            if !filter.kinds.isEmpty && !filter.kinds.contains(item.kind) {
++                return false
++            }
++            if filter.onlyFavorites && !favorites.contains(item.storageKey) {
++                return false
++            }
++            if filter.onlyPinned && item.ownership?.pinnedToTop != true {
++                return false
++            }
++            switch filter.visibility {
++            case .all:
++                break
++            case .shown:
++                if item.ownership?.savedToProfile != true { return false }
++            case .hidden:
++                guard let ownership = item.ownership, !ownership.savedToProfile else { return false }
++            }
++            if !needle.isEmpty && !NYXGiftQuery.searchText(item).contains(needle) {
++                return false
++            }
++            return true
++        }
++        return NYXGiftQuery.sorted(filtered, by: sort)
++    }
++
++    static func searchText(_ item: NYXGiftItem) -> String {
++        var parts = [item.title]
++        parts.append(contentsOf: item.attributes)
++        if let number = item.number {
++            parts.append("#\(number)")
++        }
++        if let rarity = item.rarity {
++            parts.append(rarity)
++        }
++        return parts.joined(separator: " ").lowercased()
++    }
++
++    public static func sorted(_ items: [NYXGiftItem], by sort: NYXGiftSort) -> [NYXGiftItem] {
++        // Every comparison falls back to the source order so the result is deterministic.
++        switch sort {
++        case .newest:
++            return items.sorted { a, b in
++                let da = a.ownership?.date ?? Int32.min
++                let db = b.ownership?.date ?? Int32.min
++                if da != db { return da > db }
++                return a.order < b.order
++            }
++        case .priceLow:
++            return items.sorted { a, b in
++                NYXGiftQuery.optionalLess(a.priceStars, b.priceStars, a.order, b.order, ascending: true)
++            }
++        case .priceHigh:
++            return items.sorted { a, b in
++                NYXGiftQuery.optionalLess(a.priceStars, b.priceStars, a.order, b.order, ascending: false)
++            }
++        case .name:
++            return items.sorted { a, b in
++                let c = a.title.localizedCaseInsensitiveCompare(b.title)
++                if c != .orderedSame { return c == .orderedAscending }
++                return a.order < b.order
++            }
++        case .scarcest:
++            return items.sorted { a, b in
++                NYXGiftQuery.optionalLess(a.total.map(Int64.init), b.total.map(Int64.init), a.order, b.order, ascending: true)
++            }
++        }
++    }
++
++    /// Values that are nil always go last, in both directions.
++    private static func optionalLess(_ a: Int64?, _ b: Int64?, _ ao: Int, _ bo: Int, ascending: Bool) -> Bool {
++        switch (a, b) {
++        case let (x?, y?):
++            if x != y { return ascending ? x < y : x > y }
++            return ao < bo
++        case (nil, nil):
++            return ao < bo
++        case (nil, _?):
++            return false
++        case (_?, nil):
++            return true
++        }
++    }
++}
++
++public enum NYXListMove {
++    /// Moves one element; out-of-range indices leave the list unchanged. `to` is the final index.
++    public static func move<T>(_ list: [T], from: Int, to: Int) -> [T] {
++        guard from != to, list.indices.contains(from), list.indices.contains(to) else {
++            return list
++        }
++        var result = list
++        let element = result.remove(at: from)
++        result.insert(element, at: to)
++        return result
++    }
++}
+diff --git a/Ghostgram/Features/GiftsStudio/Core/NYXGiftsPrefs.swift b/Ghostgram/Features/GiftsStudio/Core/NYXGiftsPrefs.swift
+new file mode 100644
+index 00000000..006eda90
+--- /dev/null
++++ b/Ghostgram/Features/GiftsStudio/Core/NYXGiftsPrefs.swift
+@@ -0,0 +1,101 @@
++import Foundation
++
++public enum NYXProfileStyle: String, Codable, CaseIterable {
++    case classic, minimal, premium, collector, midnight, nyxPurple
++}
++
++public enum NYXCardSize: String, Codable, CaseIterable {
++    case small, medium, large
++}
++
++/// A local arrangement of gifts. It is only ever a LOCAL preview unless the user explicitly applies the
++/// pinned order to Telegram (see the "Apply to Telegram" step in the UI).
++public struct NYXProfileComposition: Codable, Equatable, Identifiable {
++    public var id: UUID
++    public var name: String
++    /// `NYXGiftItem.storageKey` values, in display order.
++    public var giftKeys: [String]
++    public var primaryKey: String?
++    public var style: NYXProfileStyle
++    public var columns: Int
++    public var cardSize: NYXCardSize
++    public var showTitles: Bool
++    public var showRarity: Bool
++    public var maxItems: Int
++
++    public init(id: UUID = UUID(), name: String, giftKeys: [String] = [], primaryKey: String? = nil, style: NYXProfileStyle = .nyxPurple, columns: Int = 3, cardSize: NYXCardSize = .medium, showTitles: Bool = true, showRarity: Bool = false, maxItems: Int = 12) {
++        self.id = id
++        self.name = name
++        self.giftKeys = giftKeys
++        self.primaryKey = primaryKey
++        self.style = style
++        self.columns = min(max(columns, 2), 4)
++        self.cardSize = cardSize
++        self.showTitles = showTitles
++        self.showRarity = showRarity
++        self.maxItems = min(max(maxItems, 1), 50)
++    }
++
++    /// The keys that are actually shown, honouring `maxItems`, with the primary gift first.
++    public var visibleKeys: [String] {
++        var keys = self.giftKeys
++        if let primary = self.primaryKey, let index = keys.firstIndex(of: primary), index != 0 {
++            keys.remove(at: index)
++            keys.insert(primary, at: 0)
++        }
++        return Array(keys.prefix(self.maxItems))
++    }
++}
++
++public struct NYXChangeEntry: Codable, Equatable {
++    public var date: Date
++    public var text: String
++    public init(date: Date, text: String) {
++        self.date = date
++        self.text = text
++    }
++}
++
++/// Everything Gifts Studio keeps locally. Versioned so it can be migrated.
++public struct NYXGiftsPrefs: Codable, Equatable {
++    public static let currentVersion = 1
++    public static let maxNotes = 5000
++    public static let maxNoteLength = 2000
++    public static let maxCompositions = 50
++    public static let maxChangeLog = 200
++
++    public var schemaVersion: Int = NYXGiftsPrefs.currentVersion
++    public var favorites: [String] = []
++    public var notes: [String: String] = [:]
++    public var compositions: [NYXProfileComposition] = []
++    public var activeCompositionID: UUID?
++    public var catalogFilter: NYXGiftFilter = NYXGiftFilter()
++    public var catalogSort: NYXGiftSort = .name
++    public var collectionFilter: NYXGiftFilter = NYXGiftFilter()
++    public var collectionSort: NYXGiftSort = .newest
++    public var changeLog: [NYXChangeEntry] = []
++
++    public init() {}
++
++    /// Drops anything that breaks the limits (used after import and on load).
++    mutating func normalize() {
++        self.favorites = Array(NSOrderedSet(array: self.favorites).array as? [String] ?? self.favorites)
++        if self.notes.count > NYXGiftsPrefs.maxNotes {
++            let keep = self.notes.keys.sorted().prefix(NYXGiftsPrefs.maxNotes)
++            self.notes = self.notes.filter { keep.contains($0.key) }
++        }
++        for (key, value) in self.notes where value.count > NYXGiftsPrefs.maxNoteLength {
++            self.notes[key] = String(value.prefix(NYXGiftsPrefs.maxNoteLength))
++        }
++        self.notes = self.notes.filter { !$0.value.isEmpty }
++        if self.compositions.count > NYXGiftsPrefs.maxCompositions {
++            self.compositions = Array(self.compositions.prefix(NYXGiftsPrefs.maxCompositions))
++        }
++        if let active = self.activeCompositionID, !self.compositions.contains(where: { $0.id == active }) {
++            self.activeCompositionID = nil
++        }
++        if self.changeLog.count > NYXGiftsPrefs.maxChangeLog {
++            self.changeLog = Array(self.changeLog.suffix(NYXGiftsPrefs.maxChangeLog))
++        }
++    }
++}
+diff --git a/Ghostgram/Features/GiftsStudio/Core/NYXGiftsStore.swift b/Ghostgram/Features/GiftsStudio/Core/NYXGiftsStore.swift
+new file mode 100644
+index 00000000..415e05ee
+--- /dev/null
++++ b/Ghostgram/Features/GiftsStudio/Core/NYXGiftsStore.swift
+@@ -0,0 +1,186 @@
++import Foundation
++
++public enum NYXGiftsStoreIssue: Equatable {
++    /// The main file could not be read; the backup was used.
++    case restoredFromBackup
++    /// Neither file could be read; the damaged file was set aside and defaults are in use.
++    case resetAfterCorruption
++    /// The file was written by a newer NYXGram. It is left untouched and changes are kept in memory only.
++    case newerVersionReadOnly
++}
++
++public enum NYXGiftsImportError: Error, Equatable {
++    case notValidData
++    case newerVersion
++    case writeFailed
++}
++
++/// Local persistence for Gifts Studio: one JSON file, written atomically, with a backup of the previous
++/// good version. Corrupted data never crashes the app and never silently erases the user's settings:
++/// the damaged file is kept next to the new one.
++public final class NYXGiftsStore {
++    public static let shared = NYXGiftsStore(fileURL: NYXGiftsStore.defaultURL())
++
++    private let fileURL: URL
++    private let lock = NSLock()
++    private var prefs: NYXGiftsPrefs
++    private var readOnly = false
++    public private(set) var loadIssue: NYXGiftsStoreIssue?
++
++    public static func defaultURL() -> URL {
++        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("NYXGram", isDirectory: true)
++        return base.appendingPathComponent("gifts-studio.json")
++    }
++
++    public init(fileURL: URL) {
++        self.fileURL = fileURL
++        self.prefs = NYXGiftsPrefs()
++        try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
++        self.load()
++    }
++
++    private var backupURL: URL {
++        return self.fileURL.appendingPathExtension("bak")
++    }
++
++    // MARK: Access
++
++    public var current: NYXGiftsPrefs {
++        self.lock.lock()
++        defer { self.lock.unlock() }
++        return self.prefs
++    }
++
++    public func update(_ change: (inout NYXGiftsPrefs) -> Void) {
++        self.lock.lock()
++        var next = self.prefs
++        change(&next)
++        next.schemaVersion = NYXGiftsPrefs.currentVersion
++        next.normalize()
++        let changed = next != self.prefs
++        self.prefs = next
++        if changed {
++            self.saveLocked()
++        }
++        self.lock.unlock()
++    }
++
++    /// Appends a line to the local change history ("what I changed in my gift layout").
++    public func log(_ text: String, now: Date = Date()) {
++        self.update { $0.changeLog.append(NYXChangeEntry(date: now, text: text)) }
++    }
++
++    /// Back to defaults. The previous file stays as the backup.
++    public func resetAll() {
++        self.update { $0 = NYXGiftsPrefs() }
++    }
++
++    // MARK: Export / import
++
++    public func exportData() -> Data? {
++        let encoder = JSONEncoder()
++        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
++        encoder.dateEncodingStrategy = .iso8601
++        return try? encoder.encode(self.current)
++    }
++
++    /// Replaces the local settings with the imported ones after validating them.
++    public func importData(_ data: Data) throws {
++        let decoder = JSONDecoder()
++        decoder.dateDecodingStrategy = .iso8601
++        guard data.count <= 5_000_000, var imported = try? decoder.decode(NYXGiftsPrefs.self, from: data) else {
++            throw NYXGiftsImportError.notValidData
++        }
++        if imported.schemaVersion > NYXGiftsPrefs.currentVersion {
++            throw NYXGiftsImportError.newerVersion
++        }
++        imported.schemaVersion = NYXGiftsPrefs.currentVersion
++        imported.normalize()
++        self.lock.lock()
++        defer { self.lock.unlock() }
++        if self.readOnly {
++            throw NYXGiftsImportError.writeFailed
++        }
++        self.prefs = imported
++        if !self.saveLocked() {
++            throw NYXGiftsImportError.writeFailed
++        }
++    }
++
++    // MARK: Disk
++
++    private func decoder() -> JSONDecoder {
++        let decoder = JSONDecoder()
++        decoder.dateDecodingStrategy = .iso8601
++        return decoder
++    }
++
++    private func read(_ url: URL) -> NYXGiftsPrefs? {
++        guard let data = try? Data(contentsOf: url) else {
++            return nil
++        }
++        return try? self.decoder().decode(NYXGiftsPrefs.self, from: data)
++    }
++
++    private func load() {
++        let fm = FileManager.default
++        guard fm.fileExists(atPath: self.fileURL.path) else {
++            if fm.fileExists(atPath: self.backupURL.path), var backup = self.read(self.backupURL) {
++                backup.normalize()
++                self.prefs = backup
++                self.loadIssue = .restoredFromBackup
++            }
++            return
++        }
++        if var main = self.read(self.fileURL) {
++            if main.schemaVersion > NYXGiftsPrefs.currentVersion {
++                self.readOnly = true
++                self.loadIssue = .newerVersionReadOnly
++            }
++            main.normalize()
++            self.prefs = main
++            return
++        }
++        if var backup = self.read(self.backupURL) {
++            backup.normalize()
++            self.prefs = backup
++            self.loadIssue = .restoredFromBackup
++            self.setAsideCorruptFile()
++            self.saveLocked()
++            return
++        }
++        self.loadIssue = .resetAfterCorruption
++        self.setAsideCorruptFile()
++    }
++
++    private func setAsideCorruptFile() {
++        let stamp = Int(Date().timeIntervalSince1970)
++        let target = self.fileURL.appendingPathExtension("corrupt-\(stamp)")
++        try? FileManager.default.moveItem(at: self.fileURL, to: target)
++    }
++
++    @discardableResult
++    private func saveLocked() -> Bool {
++        guard !self.readOnly else {
++            return false
++        }
++        let encoder = JSONEncoder()
++        encoder.outputFormatting = [.sortedKeys]
++        encoder.dateEncodingStrategy = .iso8601
++        guard let data = try? encoder.encode(self.prefs) else {
++            return false
++        }
++        let fm = FileManager.default
++        // Keep the previous good file as the backup before replacing it.
++        if fm.fileExists(atPath: self.fileURL.path), self.read(self.fileURL) != nil {
++            try? fm.removeItem(at: self.backupURL)
++            try? fm.copyItem(at: self.fileURL, to: self.backupURL)
++        }
++        do {
++            try data.write(to: self.fileURL, options: [.atomic])
++            return true
++        } catch {
++            return false
++        }
++    }
++}
+diff --git a/Ghostgram/Features/GiftsStudio/Scripts/check-gifts-forbidden.sh b/Ghostgram/Features/GiftsStudio/Scripts/check-gifts-forbidden.sh
+new file mode 100755
+index 00000000..426586f4
+--- /dev/null
++++ b/Ghostgram/Features/GiftsStudio/Scripts/check-gifts-forbidden.sh
+@@ -0,0 +1,10 @@
++#!/bin/bash
++# Gifts Studio must never buy, send, transfer, convert, withdraw, upgrade, resell or delete gifts.
++# Fails when the feature sources call any of the TelegramCore functions that do that.
++cd "$(dirname "$0")/.." || exit 2
++pattern='buyStarGift|sendStarsGift|transferStarGift|convertStarGift|withdrawStarGift|upgradeStarGift|updateStarGiftResellPrice|deleteStarGift|removeStarGift|dropOriginalDetails|insertStarGifts|requestStarsPayment|sendStarsPaymentForm|craft\('
++if grep -nE "$pattern" Core/*.swift Sources/*.swift; then
++    echo "FORBIDDEN gift operation found in Gifts Studio sources" >&2
++    exit 1
++fi
++echo "OK: no purchase/transfer/convert/withdraw/upgrade/delete calls in Gifts Studio"
+diff --git a/Ghostgram/Features/GiftsStudio/Sources/GGGiftsStudioModule.swift b/Ghostgram/Features/GiftsStudio/Sources/GGGiftsStudioModule.swift
+new file mode 100644
+index 00000000..acf99805
+--- /dev/null
++++ b/Ghostgram/Features/GiftsStudio/Sources/GGGiftsStudioModule.swift
+@@ -0,0 +1,40 @@
++import Foundation
++import SwiftUI
++import UIKit
++import GGCore
++import GGSettingsUI
++
++/// Entry point of Gifts Studio. Adds one action row to the «More» screen of the NYXGram menu; nothing
++/// runs until the user opens it.
++public enum GGGiftsStudioModule {
++    static let section = GGMenuSectionID("giftsStudio.main")
++
++    /// Called once on the main thread from `GGFeatures.registerAll()`, before `GGHookRegistry.freeze()`.
++    public static func register() {
++        GGMenuRegistry.register(section: GGMenuSectionDescriptor(id: GGGiftsStudioModule.section, screen: .category(.more), order: 50))
++        GGMenuRegistry.register(GGMenuRow(
++            id: "giftsStudio.open",
++            section: GGGiftsStudioModule.section,
++            order: 100,
++            title: { nyxT("Gifts Studio", "Gifts Studio") },
++            subtitle: { nyxT("Catalog, your collection and profile layouts. Never buys or sends gifts.", "Каталог, ваша коллекция и раскладки профиля. Ничего не покупает и не отправляет.") },
++            icon: .system("gift"),
++            kind: .action({ context in
++                GGGiftsStudioModule.open(context)
++            }),
++            searchKeywords: { ["gifts", "подарки", "collection", "коллекция", "stars"] }
++        ))
++    }
++
++    private static func open(_ menuContext: GGMenuContext) {
++        let model = NYXGiftsViewModel(context: menuContext.context)
++        var controller: UIHostingController<NYXGiftsRootView>?
++        let root = NYXGiftsRootView(model: model, close: {
++            controller?.dismiss(animated: true, completion: nil)
++        })
++        let hosting = UIHostingController(rootView: root)
++        hosting.modalPresentationStyle = .pageSheet
++        controller = hosting
++        menuContext.presentNative(hosting)
++    }
++}
+diff --git a/Ghostgram/Features/GiftsStudio/Sources/NYXGiftsService.swift b/Ghostgram/Features/GiftsStudio/Sources/NYXGiftsService.swift
+new file mode 100644
+index 00000000..4c942aa2
+--- /dev/null
++++ b/Ghostgram/Features/GiftsStudio/Sources/NYXGiftsService.swift
+@@ -0,0 +1,241 @@
++import Foundation
++import SwiftSignalKit
++import Postbox
++import TelegramCore
++import AccountContext
++import GGGiftsStudioCore
++
++/// Reads the real Telegram gift data (catalog and the user's own collection) and maps it to the pure
++/// models of `GGGiftsStudioCore`.
++///
++/// What this service is allowed to change on Telegram (always after the user confirms in the UI):
++///  - show / hide a gift on the profile,
++///  - pin / unpin a gift,
++///  - the order of the pinned gifts.
++/// It deliberately has NO code path for buying, sending, transferring, converting to Stars,
++/// withdrawing, upgrading, reselling or deleting gifts. `Scripts/check-gifts-forbidden.sh` enforces that.
++final class NYXGiftsService {
++    private let context: AccountContext
++    private let profileGifts: ProfileGiftsContext
++    private let referenceLock = NSLock()
++    private var references: [String: StarGiftReference] = [:]
++
++    init(context: AccountContext) {
++        self.context = context
++        self.profileGifts = ProfileGiftsContext(account: context.account, peerId: context.account.peerId)
++    }
++
++    /// Pin limit from Telegram's app config; 6 when the config has none.
++    var maxPinned: Int {
++        if let value = self.context.currentAppConfiguration.with({ $0 }).data?["stargifts_pinned_to_top_limit"] as? Double {
++            return max(1, Int(value))
++        }
++        return 6
++    }
++
++    // MARK: Catalog
++
++    /// Keeps Telegram's gift catalog fresh while the returned signal is subscribed.
++    func keepCatalogUpdated() -> Signal<Never, NoError> {
++        return self.context.engine.payments.keepStarGiftsUpdated()
++    }
++
++    /// Catalog from Telegram's cache.
++    func catalog() -> Signal<[NYXGiftItem], NoError> {
++        return self.context.engine.payments.cachedStarGifts()
++        |> map { gifts -> [NYXGiftItem] in
++            guard let gifts = gifts else {
++                return []
++            }
++            var result: [NYXGiftItem] = []
++            for (index, gift) in gifts.enumerated() {
++                if let item = NYXGiftsService.catalogItem(gift, order: index) {
++                    result.append(item)
++                }
++            }
++            return result
++        }
++    }
++
++    private static func catalogItem(_ gift: StarGift, order: Int) -> NYXGiftItem? {
++        switch gift {
++        case let .generic(gift):
++            let limited = gift.availability != nil
++            return NYXGiftItem(
++                id: "gift:\(gift.id)",
++                title: gift.title ?? "",
++                kind: limited ? .limited : .regular,
++                priceStars: gift.price,
++                remains: gift.availability?.remains,
++                total: gift.availability?.total,
++                requiresPremium: gift.flags.contains(.requiresPremium),
++                isBirthday: gift.flags.contains(.isBirthdayGift),
++                thumbnail: gift.file.immediateThumbnailData,
++                order: order
++            )
++        case let .unique(gift):
++            return NYXGiftsService.uniqueItem(id: "gift:\(gift.id)", gift: gift, order: order, ownership: nil)
++        }
++    }
++
++    private static func uniqueItem(id: String, gift: StarGift.UniqueGift, order: Int, ownership: NYXGiftOwnership?) -> NYXGiftItem {
++        var names: [String] = []
++        var rarity: String?
++        var thumbnail: Data?
++        for attribute in gift.attributes {
++            switch attribute {
++            case let .model(name, file, attributeRarity, _):
++                names.append(name)
++                thumbnail = file.immediateThumbnailData
++                rarity = NYXGiftsService.rarityText(attributeRarity)
++            case let .pattern(name, _, _):
++                names.append(name)
++            case let .backdrop(name, _, _, _, _, _, _):
++                names.append(name)
++            case .originalInfo:
++                break
++            }
++        }
++        return NYXGiftItem(
++            id: id,
++            title: gift.title,
++            kind: .unique,
++            remains: gift.availability.total - gift.availability.issued,
++            total: gift.availability.total,
++            number: gift.number,
++            rarity: rarity,
++            attributes: names,
++            thumbnail: thumbnail,
++            order: order,
++            ownership: ownership
++        )
++    }
++
++    private static func rarityText(_ rarity: StarGift.UniqueGift.Attribute.Rarity) -> String {
++        switch rarity {
++        case let .permille(value):
++            let percent = Double(value) / 10.0
++            return String(format: "%.1f%%", percent)
++        case .uncommon:
++            return "Uncommon"
++        case .rare:
++            return "Rare"
++        case .epic:
++            return "Epic"
++        case .legendary:
++            return "Legendary"
++        }
++    }
++
++    // MARK: Own collection
++
++    func collection() -> Signal<[NYXGiftItem], NoError> {
++        self.profileGifts.reload()
++        return self.profileGifts.state
++        |> map { [weak self] state -> [NYXGiftItem] in
++            guard let self = self else {
++                return []
++            }
++            return self.items(from: state)
++        }
++    }
++
++    func loadMore() {
++        self.profileGifts.loadMore()
++    }
++
++    private func items(from state: ProfileGiftsContext.State) -> [NYXGiftItem] {
++        var result: [NYXGiftItem] = []
++        var map: [String: StarGiftReference] = [:]
++        for (index, entry) in state.gifts.enumerated() {
++            guard let reference = entry.reference else {
++                // Without a reference Telegram cannot be asked to change this gift; it is not listed as manageable.
++                continue
++            }
++            let key = NYXGiftsService.key(for: reference)
++            map[key] = reference
++            let ownership = NYXGiftOwnership(
++                referenceKey: key,
++                savedToProfile: entry.savedToProfile,
++                pinnedToTop: entry.pinnedToTop,
++                date: entry.date,
++                fromName: entry.nameHidden ? nil : entry.fromPeer?.compactDisplayTitle
++            )
++            switch entry.gift {
++            case let .generic(gift):
++                result.append(NYXGiftItem(
++                    id: "own:\(key)",
++                    title: gift.title ?? "",
++                    kind: gift.availability != nil ? .limited : .regular,
++                    priceStars: gift.price,
++                    remains: gift.availability?.remains,
++                    total: gift.availability?.total,
++                    requiresPremium: gift.flags.contains(.requiresPremium),
++                    isBirthday: gift.flags.contains(.isBirthdayGift),
++                    thumbnail: gift.file.immediateThumbnailData,
++                    order: index,
++                    ownership: ownership
++                ))
++            case let .unique(gift):
++                result.append(NYXGiftsService.uniqueItem(id: "own:\(key)", gift: gift, order: index, ownership: ownership))
++            }
++        }
++        self.referenceLock.lock()
++        self.references = map
++        self.referenceLock.unlock()
++        return result
++    }
++
++    /// Stable string for a Telegram reference (used for local notes / favorites and to find the reference again).
++    static func key(for reference: StarGiftReference) -> String {
++        switch reference {
++        case let .message(messageId):
++            return "msg:\(messageId.peerId.toInt64()):\(messageId.namespace):\(messageId.id)"
++        case let .peer(peerId, id):
++            return "peer:\(peerId.toInt64()):\(id)"
++        case let .slug(slug):
++            return "slug:\(slug)"
++        }
++    }
++
++    private func reference(forKey key: String) -> StarGiftReference? {
++        self.referenceLock.lock()
++        defer { self.referenceLock.unlock() }
++        return self.references[key]
++    }
++
++    // MARK: Changes on Telegram (the UI asks the user to confirm before calling these)
++
++    @discardableResult
++    func setShownOnProfile(key: String, shown: Bool) -> Bool {
++        guard let reference = self.reference(forKey: key) else {
++            return false
++        }
++        self.profileGifts.updateStarGiftAddedToProfile(reference: reference, added: shown)
++        return true
++    }
++
++    @discardableResult
++    func setPinned(key: String, pinned: Bool) -> Bool {
++        guard let reference = self.reference(forKey: key) else {
++            return false
++        }
++        self.profileGifts.updateStarGiftPinnedToTop(reference: reference, pinnedToTop: pinned)
++        return true
++    }
++
++    /// Replaces the order of the pinned gifts. Keys that are no longer known are skipped; the list is
++    /// cut to the pin limit. Returns how many were sent.
++    @discardableResult
++    func applyPinnedOrder(keys: [String]) -> Int {
++        var references: [StarGiftReference] = []
++        for key in keys {
++            if let reference = self.reference(forKey: key) {
++                references.append(reference)
++            }
++        }
++        references = Array(references.prefix(self.maxPinned))
++        self.profileGifts.updatePinnedToTopStarGifts(references: references)
++        return references.count
++    }
++}
+diff --git a/Ghostgram/Features/GiftsStudio/Sources/NYXGiftsViewModel.swift b/Ghostgram/Features/GiftsStudio/Sources/NYXGiftsViewModel.swift
+new file mode 100644
+index 00000000..a98a03f8
+--- /dev/null
++++ b/Ghostgram/Features/GiftsStudio/Sources/NYXGiftsViewModel.swift
+@@ -0,0 +1,210 @@
++import Foundation
++import SwiftUI
++import SwiftSignalKit
++import TelegramCore
++import AccountContext
++import GGGiftsStudioCore
++
++/// Small helper: Russian when the device language is Russian, English otherwise.
++func nyxT(_ en: String, _ ru: String) -> String {
++    return Locale.preferredLanguages.first?.hasPrefix("ru") == true ? ru : en
++}
++
++final class NYXGiftsViewModel: ObservableObject {
++    @Published var catalog: [NYXGiftItem] = []
++    @Published var collection: [NYXGiftItem] = []
++    @Published var prefs: NYXGiftsPrefs
++    @Published var isCollectionLoaded = false
++    @Published var message: String?
++
++    let service: NYXGiftsService
++    private let store: NYXGiftsStore
++    private let disposables = DisposableSet()
++
++    init(context: AccountContext, store: NYXGiftsStore = NYXGiftsStore.shared) {
++        self.service = NYXGiftsService(context: context)
++        self.store = store
++        self.prefs = store.current
++        if let issue = store.loadIssue {
++            switch issue {
++            case .restoredFromBackup:
++                self.message = nyxT("Settings file was damaged; the backup was restored.", "Файл настроек повреждён, восстановлена резервная копия.")
++            case .resetAfterCorruption:
++                self.message = nyxT("Settings file was damaged and set aside; defaults are used.", "Файл настроек повреждён и отложен, используются значения по умолчанию.")
++            case .newerVersionReadOnly:
++                self.message = nyxT("Settings were saved by a newer version; changes are not saved.", "Настройки сохранены более новой версией; изменения не сохраняются.")
++            }
++        }
++        self.disposables.add(self.service.keepCatalogUpdated().start())
++        self.disposables.add((self.service.catalog() |> deliverOnMainQueue).start(next: { [weak self] items in
++            self?.catalog = items
++        }))
++        self.disposables.add((self.service.collection() |> deliverOnMainQueue).start(next: { [weak self] items in
++            self?.collection = items
++            self?.isCollectionLoaded = true
++        }))
++    }
++
++    deinit {
++        self.disposables.dispose()
++    }
++
++    // MARK: Local prefs
++
++    func update(_ change: @escaping (inout NYXGiftsPrefs) -> Void) {
++        self.store.update(change)
++        self.prefs = self.store.current
++    }
++
++    func log(_ text: String) {
++        self.store.log(text)
++        self.prefs = self.store.current
++    }
++
++    func isFavorite(_ item: NYXGiftItem) -> Bool {
++        return self.prefs.favorites.contains(item.storageKey)
++    }
++
++    func toggleFavorite(_ item: NYXGiftItem) {
++        let key = item.storageKey
++        self.update { prefs in
++            if let index = prefs.favorites.firstIndex(of: key) {
++                prefs.favorites.remove(at: index)
++            } else {
++                prefs.favorites.append(key)
++            }
++        }
++    }
++
++    func note(for item: NYXGiftItem) -> String {
++        return self.prefs.notes[item.storageKey] ?? ""
++    }
++
++    func setNote(_ text: String, for item: NYXGiftItem) {
++        let key = item.storageKey
++        self.update { $0.notes[key] = text }
++    }
++
++    // MARK: Changes on Telegram (the view confirms first)
++
++    func setShown(_ item: NYXGiftItem, shown: Bool) {
++        guard let key = item.ownership?.referenceKey, self.service.setShownOnProfile(key: key, shown: shown) else {
++            return
++        }
++        self.log((shown ? "Shown on profile: " : "Hidden from profile: ") + item.title)
++    }
++
++    func setPinned(_ item: NYXGiftItem, pinned: Bool) {
++        guard let key = item.ownership?.referenceKey, self.service.setPinned(key: key, pinned: pinned) else {
++            return
++        }
++        self.log((pinned ? "Pinned: " : "Unpinned: ") + item.title)
++    }
++
++    func applyActiveOrderToTelegram() -> Int {
++        guard let composition = self.activeComposition else {
++            return 0
++        }
++        let ownKeys = composition.visibleKeys.filter { $0.hasPrefix("msg:") || $0.hasPrefix("peer:") || $0.hasPrefix("slug:") }
++        let sent = self.service.applyPinnedOrder(keys: ownKeys)
++        self.log("Applied pinned order to Telegram (\(sent) gifts) from \"\(composition.name)\"")
++        return sent
++    }
++
++    // MARK: Compositions
++
++    var activeComposition: NYXProfileComposition? {
++        if let id = self.prefs.activeCompositionID, let found = self.prefs.compositions.first(where: { $0.id == id }) {
++            return found
++        }
++        return self.prefs.compositions.first
++    }
++
++    func addComposition(name: String) {
++        let composition = NYXProfileComposition(name: name.isEmpty ? nyxT("My layout", "Моя раскладка") : name)
++        self.update { prefs in
++            prefs.compositions.append(composition)
++            prefs.activeCompositionID = composition.id
++        }
++        self.log("Created layout \"\(composition.name)\"")
++    }
++
++    func deleteActiveComposition() {
++        guard let composition = self.activeComposition else {
++            return
++        }
++        self.update { prefs in
++            prefs.compositions.removeAll { $0.id == composition.id }
++            prefs.activeCompositionID = prefs.compositions.first?.id
++        }
++        self.log("Deleted layout \"\(composition.name)\"")
++    }
++
++    func editActive(_ change: @escaping (inout NYXProfileComposition) -> Void) {
++        guard let composition = self.activeComposition else {
++            return
++        }
++        self.update { prefs in
++            if let index = prefs.compositions.firstIndex(where: { $0.id == composition.id }) {
++                change(&prefs.compositions[index])
++            }
++        }
++    }
++
++    func item(forKey key: String) -> NYXGiftItem? {
++        return self.collection.first(where: { $0.storageKey == key }) ?? self.catalog.first(where: { $0.storageKey == key })
++    }
++
++    // MARK: Backup
++
++    func exportFileURL() -> URL? {
++        guard let data = self.store.exportData() else {
++            return nil
++        }
++        let url = FileManager.default.temporaryDirectory.appendingPathComponent("nyx-gifts-studio.json")
++        do {
++            try data.write(to: url, options: [.atomic])
++            return url
++        } catch {
++            return nil
++        }
++    }
++
++    func importFromClipboard() {
++        guard let text = UIPasteboard.general.string, let data = text.data(using: .utf8) else {
++            self.message = nyxT("The clipboard has no settings text.", "В буфере нет текста настроек.")
++            return
++        }
++        do {
++            try self.store.importData(data)
++            self.prefs = self.store.current
++            self.log("Imported settings")
++            self.message = nyxT("Settings imported.", "Настройки импортированы.")
++        } catch NYXGiftsImportError.newerVersion {
++            self.message = nyxT("These settings come from a newer NYXGram.", "Эти настройки из более новой версии NYXGram.")
++        } catch {
++            self.message = nyxT("Could not import: the text is not valid Gifts Studio settings.", "Не удалось импортировать: это не настройки Gifts Studio.")
++        }
++    }
++
++    func resetLocalData() {
++        self.store.resetAll()
++        self.prefs = self.store.current
++    }
++
++    // MARK: Compare
++
++    /// Differences between two gifts as plain lines (only facts Telegram provided).
++    func compare(_ a: NYXGiftItem, _ b: NYXGiftItem) -> [(String, String, String)] {
++        func s(_ v: Int64?) -> String { return v.map { String($0) } ?? "—" }
++        func i(_ v: Int32?) -> String { return v.map { String($0) } ?? "—" }
++        return [
++            (nyxT("Type", "Тип"), a.kind.rawValue, b.kind.rawValue),
++            (nyxT("Price (Stars)", "Цена (Stars)"), s(a.priceStars), s(b.priceStars)),
++            (nyxT("Supply", "Тираж"), i(a.total), i(b.total)),
++            (nyxT("Remaining", "Осталось"), i(a.remains), i(b.remains)),
++            (nyxT("Number", "Номер"), i(a.number), i(b.number)),
++            (nyxT("Rarity", "Редкость"), a.rarity ?? "—", b.rarity ?? "—")
++        ]
++    }
++}
+diff --git a/Ghostgram/Features/GiftsStudio/Sources/NYXGiftsViews.swift b/Ghostgram/Features/GiftsStudio/Sources/NYXGiftsViews.swift
+new file mode 100644
+index 00000000..3da12ea6
+--- /dev/null
++++ b/Ghostgram/Features/GiftsStudio/Sources/NYXGiftsViews.swift
+@@ -0,0 +1,514 @@
++import Foundation
++import SwiftUI
++import UIKit
++import GGGiftsStudioCore
++
++private let nyxViolet = Color(red: 0.55, green: 0.36, blue: 0.96)
++private let nyxBackground = Color(red: 0.05, green: 0.04, blue: 0.09)
++
++private extension NYXProfileStyle {
++    var title: String {
++        switch self {
++        case .classic: return nyxT("Classic", "Классика")
++        case .minimal: return nyxT("Minimal", "Минимал")
++        case .premium: return nyxT("Premium", "Премиум")
++        case .collector: return nyxT("Collector", "Коллекционер")
++        case .midnight: return nyxT("Midnight", "Полночь")
++        case .nyxPurple: return "NYX Purple"
++        }
++    }
++    var cardFill: Color {
++        switch self {
++        case .classic: return Color(white: 0.16)
++        case .minimal: return Color(white: 0.10)
++        case .premium: return Color(red: 0.30, green: 0.23, blue: 0.08)
++        case .collector: return Color(red: 0.10, green: 0.24, blue: 0.22)
++        case .midnight: return Color(red: 0.05, green: 0.08, blue: 0.20)
++        case .nyxPurple: return Color(red: 0.24, green: 0.14, blue: 0.45)
++        }
++    }
++    var accent: Color {
++        switch self {
++        case .premium: return Color(red: 1.0, green: 0.82, blue: 0.35)
++        case .collector: return Color(red: 0.35, green: 0.9, blue: 0.75)
++        case .midnight: return Color(red: 0.45, green: 0.6, blue: 1.0)
++        default: return nyxViolet
++        }
++    }
++}
++
++private extension NYXGiftKind {
++    var title: String {
++        switch self {
++        case .regular: return nyxT("Regular", "Обычный")
++        case .limited: return nyxT("Limited", "Лимитированный")
++        case .unique: return nyxT("Collectible", "Коллекционный")
++        }
++    }
++}
++
++private extension NYXGiftSort {
++    var title: String {
++        switch self {
++        case .newest: return nyxT("Newest", "Новые")
++        case .priceLow: return nyxT("Price ↑", "Цена ↑")
++        case .priceHigh: return nyxT("Price ↓", "Цена ↓")
++        case .name: return nyxT("Name", "Название")
++        case .scarcest: return nyxT("Scarcest", "Самые редкие")
++        }
++    }
++}
++
++struct NYXShareSheet: UIViewControllerRepresentable {
++    let url: URL
++    func makeUIViewController(context: Context) -> UIActivityViewController {
++        return UIActivityViewController(activityItems: [self.url], applicationActivities: nil)
++    }
++    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
++}
++
++/// "Real" Telegram data is shown as is; everything local is labelled as local.
++struct NYXGiftsRootView: View {
++    @ObservedObject var model: NYXGiftsViewModel
++    let close: () -> Void
++    @State private var tab = 0
++
++    var body: some View {
++        NavigationView {
++            VStack(spacing: 0) {
++                Picker("", selection: self.$tab) {
++                    Text(nyxT("Catalog", "Каталог")).tag(0)
++                    Text(nyxT("Collection", "Коллекция")).tag(1)
++                    Text(nyxT("Layout", "Раскладка")).tag(2)
++                    Text(nyxT("Data", "Данные")).tag(3)
++                }
++                .pickerStyle(SegmentedPickerStyle())
++                .padding(.horizontal, 16)
++                .padding(.vertical, 8)
++                if let message = self.model.message {
++                    Text(message)
++                        .font(.footnote)
++                        .foregroundColor(.orange)
++                        .padding(.horizontal, 16)
++                        .onTapGesture { self.model.message = nil }
++                }
++                Group {
++                    switch self.tab {
++                    case 0: NYXGiftListView(model: self.model, ownCollection: false)
++                    case 1: NYXGiftListView(model: self.model, ownCollection: true)
++                    case 2: NYXLayoutView(model: self.model)
++                    default: NYXDataView(model: self.model)
++                    }
++                }
++            }
++            .background(nyxBackground.ignoresSafeArea())
++            .navigationTitle("Gifts Studio")
++            .navigationBarItems(trailing: Button(nyxT("Close", "Закрыть"), action: self.close))
++        }
++        .navigationViewStyle(StackNavigationViewStyle())
++        .accentColor(nyxViolet)
++        .preferredColorScheme(.dark)
++    }
++}
++
++struct NYXGiftRow: View {
++    let item: NYXGiftItem
++    let favorite: Bool
++
++    var body: some View {
++        HStack(spacing: 12) {
++            ZStack {
++                RoundedRectangle(cornerRadius: 10).fill(nyxViolet.opacity(0.25))
++                Image(systemName: "gift.fill").foregroundColor(nyxViolet)
++            }
++            .frame(width: 44, height: 44)
++            VStack(alignment: .leading, spacing: 2) {
++                HStack(spacing: 4) {
++                    Text(self.item.title.isEmpty ? nyxT("Gift", "Подарок") : self.item.title).font(.body)
++                    if let number = self.item.number { Text("#\(number)").font(.footnote).foregroundColor(.secondary) }
++                    if self.favorite { Image(systemName: "star.fill").font(.footnote).foregroundColor(.yellow) }
++                }
++                Text(self.detail).font(.footnote).foregroundColor(.secondary)
++            }
++            Spacer()
++            if let own = self.item.ownership {
++                VStack(alignment: .trailing, spacing: 2) {
++                    if own.pinnedToTop { Image(systemName: "pin.fill").foregroundColor(nyxViolet) }
++                    if !own.savedToProfile { Image(systemName: "eye.slash").foregroundColor(.secondary) }
++                }
++            }
++        }
++    }
++
++    private var detail: String {
++        var parts: [String] = [self.item.kind.title]
++        if let price = self.item.priceStars { parts.append("\(price) ★") }
++        if let total = self.item.total, let remains = self.item.remains { parts.append("\(remains)/\(total)") }
++        if let rarity = self.item.rarity { parts.append(rarity) }
++        if self.item.requiresPremium { parts.append("Premium") }
++        return parts.joined(separator: " · ")
++    }
++}
++
++enum NYXPendingAction: Identifiable {
++    case show(NYXGiftItem, Bool)
++    case pin(NYXGiftItem, Bool)
++    var id: String {
++        switch self {
++        case let .show(item, value): return "show-\(item.id)-\(value)"
++        case let .pin(item, value): return "pin-\(item.id)-\(value)"
++        }
++    }
++}
++
++struct NYXGiftListView: View {
++    @ObservedObject var model: NYXGiftsViewModel
++    let ownCollection: Bool
++    @State private var selected: NYXGiftItem?
++
++    private var filter: NYXGiftFilter { self.ownCollection ? self.model.prefs.collectionFilter : self.model.prefs.catalogFilter }
++    private var sort: NYXGiftSort { self.ownCollection ? self.model.prefs.collectionSort : self.model.prefs.catalogSort }
++
++    private func setFilter(_ f: NYXGiftFilter) {
++        let own = self.ownCollection
++        self.model.update { if own { $0.collectionFilter = f } else { $0.catalogFilter = f } }
++    }
++
++    private func setSort(_ s: NYXGiftSort) {
++        let own = self.ownCollection
++        self.model.update { if own { $0.collectionSort = s } else { $0.catalogSort = s } }
++    }
++
++    private var items: [NYXGiftItem] {
++        let source = self.ownCollection ? self.model.collection : self.model.catalog
++        return NYXGiftQuery.apply(source, filter: self.filter, sort: self.sort, favorites: Set(self.model.prefs.favorites))
++    }
++
++    var body: some View {
++        List {
++            Section {
++                TextField(nyxT("Search", "Поиск"), text: Binding(get: { self.filter.search }, set: { value in
++                    var f = self.filter; f.search = value; self.setFilter(f)
++                }))
++                Picker(nyxT("Sort", "Сортировка"), selection: Binding(get: { self.sort }, set: { self.setSort($0) })) {
++                    ForEach(NYXGiftSort.allCases, id: \.self) { Text($0.title).tag($0) }
++                }
++                Toggle(nyxT("Only favorites", "Только избранное"), isOn: Binding(get: { self.filter.onlyFavorites }, set: { value in
++                    var f = self.filter; f.onlyFavorites = value; self.setFilter(f)
++                }))
++                if self.ownCollection {
++                    Toggle(nyxT("Only pinned", "Только закреплённые"), isOn: Binding(get: { self.filter.onlyPinned }, set: { value in
++                        var f = self.filter; f.onlyPinned = value; self.setFilter(f)
++                    }))
++                    Picker(nyxT("Profile", "Профиль"), selection: Binding(get: { self.filter.visibility }, set: { value in
++                        var f = self.filter; f.visibility = value; self.setFilter(f)
++                    })) {
++                        Text(nyxT("All", "Все")).tag(NYXVisibilityFilter.all)
++                        Text(nyxT("Shown", "Показаны")).tag(NYXVisibilityFilter.shown)
++                        Text(nyxT("Hidden", "Скрыты")).tag(NYXVisibilityFilter.hidden)
++                    }
++                }
++                if !self.filter.isDefault {
++                    Button(nyxT("Reset filters", "Сбросить фильтры")) { self.setFilter(NYXGiftFilter()) }
++                }
++            }
++            Section(footer: self.footer) {
++                if self.items.isEmpty {
++                    Text(self.ownCollection && !self.model.isCollectionLoaded ? nyxT("Loading…", "Загрузка…") : nyxT("Nothing found.", "Ничего не найдено."))
++                        .foregroundColor(.secondary)
++                }
++                ForEach(self.items) { item in
++                    Button(action: { self.selected = item }) {
++                        NYXGiftRow(item: item, favorite: self.model.isFavorite(item))
++                    }
++                }
++            }
++        }
++        .listStyle(InsetGroupedListStyle())
++        .sheet(item: self.$selected) { item in
++            NYXGiftDetailView(model: self.model, item: item, ownCollection: self.ownCollection, close: { self.selected = nil })
++        }
++    }
++
++    private var footer: some View {
++        Text(self.ownCollection
++             ? nyxT("Your real gifts from Telegram. Showing, hiding and pinning change your real profile after you confirm.", "Ваши настоящие подарки из Telegram. Показ, скрытие и закрепление меняют реальный профиль после подтверждения.")
++             : nyxT("Catalog from Telegram. This screen only shows it: Gifts Studio never buys or sends gifts.", "Каталог из Telegram. Этот экран только показывает его: Gifts Studio ничего не покупает и не отправляет."))
++    }
++}
++
++struct NYXGiftDetailView: View {
++    @ObservedObject var model: NYXGiftsViewModel
++    let item: NYXGiftItem
++    let ownCollection: Bool
++    let close: () -> Void
++    @State private var note = ""
++    @State private var pending: NYXPendingAction?
++    @State private var compareTarget: NYXGiftItem?
++
++    var body: some View {
++        NavigationView {
++            List {
++                Section {
++                    NYXGiftRow(item: self.item, favorite: self.model.isFavorite(self.item))
++                    if !self.item.attributes.isEmpty {
++                        Text(self.item.attributes.joined(separator: " · ")).font(.footnote).foregroundColor(.secondary)
++                    }
++                    if let own = self.item.ownership, let from = own.fromName {
++                        Text(nyxT("From: ", "От: ") + from).font(.footnote).foregroundColor(.secondary)
++                    }
++                }
++                Section(header: Text(nyxT("Local (only on this device)", "Локально (только на этом устройстве)"))) {
++                    Button(self.model.isFavorite(self.item) ? nyxT("Remove from favorites", "Убрать из избранного") : nyxT("Add to favorites", "В избранное")) {
++                        self.model.toggleFavorite(self.item)
++                    }
++                    TextField(nyxT("Private note", "Личная заметка"), text: self.$note)
++                        .onChange(of: self.note) { value in self.model.setNote(value, for: self.item) }
++                }
++                if let own = self.item.ownership {
++                    Section(header: Text(nyxT("On Telegram (asks to confirm)", "В Telegram (с подтверждением)"))) {
++                        Button(own.savedToProfile ? nyxT("Hide from profile", "Скрыть из профиля") : nyxT("Show on profile", "Показать в профиле")) {
++                            self.pending = .show(self.item, !own.savedToProfile)
++                        }
++                        Button(own.pinnedToTop ? nyxT("Unpin", "Открепить") : nyxT("Pin to top", "Закрепить")) {
++                            self.pending = .pin(self.item, !own.pinnedToTop)
++                        }
++                    }
++                }
++                Section(header: Text(nyxT("Compare with", "Сравнить с"))) {
++                    ForEach(self.compareCandidates.prefix(20)) { other in
++                        Button(other.title) { self.compareTarget = other }
++                    }
++                    if let other = self.compareTarget {
++                        ForEach(Array(self.model.compare(self.item, other).enumerated()), id: \.offset) { _, row in
++                            HStack {
++                                Text(row.0).foregroundColor(.secondary)
++                                Spacer()
++                                Text("\(row.1)  |  \(row.2)")
++                            }.font(.footnote)
++                        }
++                    }
++                }
++            }
++            .listStyle(InsetGroupedListStyle())
++            .navigationTitle(self.item.title.isEmpty ? nyxT("Gift", "Подарок") : self.item.title)
++            .navigationBarItems(trailing: Button(nyxT("Done", "Готово"), action: self.close))
++            .onAppear { self.note = self.model.note(for: self.item) }
++            .alert(item: self.$pending) { action in
++                switch action {
++                case let .show(item, shown):
++                    return Alert(
++                        title: Text(shown ? nyxT("Show on your profile?", "Показать в профиле?") : nyxT("Hide from your profile?", "Скрыть из профиля?")),
++                        message: Text(nyxT("This changes your real Telegram profile.", "Это изменит ваш реальный профиль в Telegram.")),
++                        primaryButton: .default(Text(nyxT("Confirm", "Подтвердить"))) { self.model.setShown(item, shown: shown) },
++                        secondaryButton: .cancel()
++                    )
++                case let .pin(item, pinned):
++                    return Alert(
++                        title: Text(pinned ? nyxT("Pin this gift?", "Закрепить подарок?") : nyxT("Unpin this gift?", "Открепить подарок?")),
++                        message: Text(nyxT("This changes your real Telegram profile. Pin limit: ", "Это изменит ваш реальный профиль. Лимит закрепов: ") + "\(self.model.service.maxPinned)"),
++                        primaryButton: .default(Text(nyxT("Confirm", "Подтвердить"))) { self.model.setPinned(item, pinned: pinned) },
++                        secondaryButton: .cancel()
++                    )
++                }
++            }
++        }
++        .navigationViewStyle(StackNavigationViewStyle())
++    }
++
++    private var compareCandidates: [NYXGiftItem] {
++        let source = self.ownCollection ? self.model.collection : self.model.catalog
++        return source.filter { $0.id != self.item.id }
++    }
++}
++
++struct NYXLayoutView: View {
++    @ObservedObject var model: NYXGiftsViewModel
++    @State private var newName = ""
++    @State private var showApply = false
++    @State private var showPicker = false
++    @State private var appliedCount: Int?
++
++    var body: some View {
++        List {
++            Section(footer: Text(nyxT("A local preview of how your gifts could look. It is NOT published to Telegram. Only “Apply pinned order” changes your real profile, and only after you confirm.", "Локальный предпросмотр. Он НЕ публикуется в Telegram. Только «Применить порядок закрепов» меняет реальный профиль и только после подтверждения."))) {
++                ForEach(self.model.prefs.compositions) { composition in
++                    Button(action: { self.model.update { $0.activeCompositionID = composition.id } }) {
++                        HStack {
++                            Text(composition.name)
++                            Spacer()
++                            if composition.id == self.model.activeComposition?.id { Image(systemName: "checkmark") }
++                        }
++                    }
++                }
++                HStack {
++                    TextField(nyxT("New layout name", "Название раскладки"), text: self.$newName)
++                    Button(nyxT("Add", "Добавить")) { self.model.addComposition(name: self.newName); self.newName = "" }
++                }
++            }
++            if let composition = self.model.activeComposition {
++                Section(header: Text(nyxT("Preview (local)", "Предпросмотр (локально)"))) {
++                    NYXPreviewGrid(model: self.model, composition: composition)
++                }
++                Section(header: Text(nyxT("Style", "Стиль"))) {
++                    Picker(nyxT("Style", "Стиль"), selection: Binding(get: { composition.style }, set: { value in self.model.editActive { $0.style = value } })) {
++                        ForEach(NYXProfileStyle.allCases, id: \.self) { Text($0.title).tag($0) }
++                    }
++                    Stepper(nyxT("Columns: ", "Колонок: ") + "\(composition.columns)", value: Binding(get: { composition.columns }, set: { value in self.model.editActive { $0.columns = min(max(value, 2), 4) } }), in: 2...4)
++                    Stepper(nyxT("Max gifts: ", "Максимум: ") + "\(composition.maxItems)", value: Binding(get: { composition.maxItems }, set: { value in self.model.editActive { $0.maxItems = min(max(value, 1), 50) } }), in: 1...50)
++                    Picker(nyxT("Card size", "Размер карточек"), selection: Binding(get: { composition.cardSize }, set: { value in self.model.editActive { $0.cardSize = value } })) {
++                        Text("S").tag(NYXCardSize.small); Text("M").tag(NYXCardSize.medium); Text("L").tag(NYXCardSize.large)
++                    }.pickerStyle(SegmentedPickerStyle())
++                    Toggle(nyxT("Show titles", "Показывать названия"), isOn: Binding(get: { composition.showTitles }, set: { value in self.model.editActive { $0.showTitles = value } }))
++                    Toggle(nyxT("Show rarity", "Показывать редкость"), isOn: Binding(get: { composition.showRarity }, set: { value in self.model.editActive { $0.showRarity = value } }))
++                }
++                Section(header: Text(nyxT("Gifts (drag to reorder)", "Подарки (перетащите для порядка)"))) {
++                    ForEach(composition.giftKeys, id: \.self) { key in
++                        HStack {
++                            Text(self.model.item(forKey: key)?.title ?? key)
++                            Spacer()
++                            Button(action: { self.model.editActive { $0.primaryKey = key } }) {
++                                Image(systemName: composition.primaryKey == key ? "star.fill" : "star")
++                            }.buttonStyle(BorderlessButtonStyle())
++                        }
++                    }
++                    .onMove { source, destination in
++                        guard let from = source.first else { return }
++                        self.model.editActive { $0.giftKeys = NYXListMove.move($0.giftKeys, from: from, to: destination > from ? destination - 1 : destination) }
++                    }
++                    .onDelete { offsets in
++                        self.model.editActive { composition in
++                            for index in offsets.sorted(by: >) where index < composition.giftKeys.count { composition.giftKeys.remove(at: index) }
++                        }
++                    }
++                    Button(nyxT("Add gifts…", "Добавить подарки…")) { self.showPicker = true }
++                    EditButton()
++                }
++                Section(footer: Text(nyxT("Sends the first pinned-capable gifts of this layout, in order, as your real pinned gifts.", "Отправляет первые подарки этой раскладки как реальные закрепы в этом порядке."))) {
++                    Button(nyxT("Apply pinned order to Telegram…", "Применить порядок закрепов в Telegram…")) { self.showApply = true }
++                    Button(nyxT("Delete this layout", "Удалить раскладку")) { self.model.deleteActiveComposition() }.foregroundColor(.red)
++                }
++            }
++        }
++        .listStyle(InsetGroupedListStyle())
++        .sheet(isPresented: self.$showPicker) { NYXGiftPicker(model: self.model, close: { self.showPicker = false }) }
++        .alert(isPresented: self.$showApply) {
++            Alert(
++                title: Text(nyxT("Change your real pinned gifts?", "Изменить реальные закрепы?")),
++                message: Text(nyxT("This updates the pinned gifts on your Telegram profile.", "Это обновит закреплённые подарки в вашем профиле Telegram.")),
++                primaryButton: .default(Text(nyxT("Apply", "Применить"))) { self.appliedCount = self.model.applyActiveOrderToTelegram() },
++                secondaryButton: .cancel()
++            )
++        }
++    }
++}
++
++struct NYXPreviewGrid: View {
++    @ObservedObject var model: NYXGiftsViewModel
++    let composition: NYXProfileComposition
++
++    private var side: CGFloat {
++        switch self.composition.cardSize {
++        case .small: return 56
++        case .medium: return 76
++        case .large: return 100
++        }
++    }
++
++    var body: some View {
++        let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: self.composition.columns)
++        VStack(alignment: .leading, spacing: 6) {
++            Text(nyxT("Local preview — not published to Telegram", "Локальный предпросмотр — не опубликовано в Telegram"))
++                .font(.caption).foregroundColor(.orange)
++            if self.composition.visibleKeys.isEmpty {
++                Text(nyxT("Add gifts to see the preview.", "Добавьте подарки для предпросмотра.")).foregroundColor(.secondary)
++            }
++            LazyVGrid(columns: columns, spacing: 8) {
++                ForEach(self.composition.visibleKeys, id: \.self) { key in
++                    let item = self.model.item(forKey: key)
++                    VStack(spacing: 4) {
++                        ZStack {
++                            RoundedRectangle(cornerRadius: 12).fill(self.composition.style.cardFill)
++                            Image(systemName: key == self.composition.primaryKey ? "gift.circle.fill" : "gift.fill")
++                                .foregroundColor(self.composition.style.accent)
++                        }
++                        .frame(height: self.side)
++                        if self.composition.showTitles, let item = item {
++                            Text(item.title).font(.caption2).lineLimit(1)
++                        }
++                        if self.composition.showRarity, let rarity = item?.rarity {
++                            Text(rarity).font(.caption2).foregroundColor(self.composition.style.accent)
++                        }
++                    }
++                }
++            }
++        }
++    }
++}
++
++struct NYXGiftPicker: View {
++    @ObservedObject var model: NYXGiftsViewModel
++    let close: () -> Void
++
++    var body: some View {
++        NavigationView {
++            List {
++                ForEach(self.model.collection) { item in
++                    let key = item.storageKey
++                    let included = self.model.activeComposition?.giftKeys.contains(key) ?? false
++                    Button(action: {
++                        self.model.editActive { composition in
++                            if let index = composition.giftKeys.firstIndex(of: key) { composition.giftKeys.remove(at: index) } else { composition.giftKeys.append(key) }
++                        }
++                    }) {
++                        HStack { NYXGiftRow(item: item, favorite: false); Image(systemName: included ? "checkmark.circle.fill" : "circle") }
++                    }
++                }
++            }
++            .navigationTitle(nyxT("Add gifts", "Добавить подарки"))
++            .navigationBarItems(trailing: Button(nyxT("Done", "Готово"), action: self.close))
++        }
++    }
++}
++
++struct NYXDataView: View {
++    @ObservedObject var model: NYXGiftsViewModel
++    @State private var exportURL: URL?
++    @State private var confirmReset = false
++
++    var body: some View {
++        List {
++            Section(header: Text(nyxT("Backup", "Резервная копия")), footer: Text(nyxT("Settings, notes, favorites and layouts are stored only on this device. Export/import never touches your Telegram profile.", "Настройки, заметки, избранное и раскладки хранятся только на этом устройстве. Экспорт/импорт не затрагивает профиль Telegram."))) {
++                Button(nyxT("Export settings", "Экспорт настроек")) { self.exportURL = self.model.exportFileURL() }
++                Button(nyxT("Import from clipboard", "Импорт из буфера")) { self.model.importFromClipboard() }
++                Button(nyxT("Reset local data", "Сбросить локальные данные")) { self.confirmReset = true }.foregroundColor(.red)
++            }
++            Section(header: Text(nyxT("Local change history", "История локальных изменений"))) {
++                if self.model.prefs.changeLog.isEmpty { Text(nyxT("Empty", "Пусто")).foregroundColor(.secondary) }
++                ForEach(Array(self.model.prefs.changeLog.reversed().enumerated()), id: \.offset) { _, entry in
++                    VStack(alignment: .leading) {
++                        Text(entry.text).font(.footnote)
++                        Text(entry.date, style: .date).font(.caption2).foregroundColor(.secondary)
++                    }
++                }
++            }
++        }
++        .listStyle(InsetGroupedListStyle())
++        .sheet(item: Binding(get: { self.exportURL.map { NYXURLBox(url: $0) } }, set: { _ in self.exportURL = nil })) { box in
++            NYXShareSheet(url: box.url)
++        }
++        .alert(isPresented: self.$confirmReset) {
++            Alert(
++                title: Text(nyxT("Reset local Gifts Studio data?", "Сбросить локальные данные?")),
++                message: Text(nyxT("Favorites, notes and layouts on this device will be removed. Your Telegram gifts are not affected.", "Избранное, заметки и раскладки на этом устройстве будут удалены. Подарки в Telegram не затрагиваются.")),
++                primaryButton: .destructive(Text(nyxT("Reset", "Сбросить"))) { self.model.resetLocalData() },
++                secondaryButton: .cancel()
++            )
++        }
++    }
++}
++
++struct NYXURLBox: Identifiable {
++    let url: URL
++    var id: String { return self.url.absoluteString }
++}
+diff --git a/Ghostgram/Features/GiftsStudio/Tests/NYXGiftQueryTests.swift b/Ghostgram/Features/GiftsStudio/Tests/NYXGiftQueryTests.swift
+new file mode 100644
+index 00000000..10b863dc
+--- /dev/null
++++ b/Ghostgram/Features/GiftsStudio/Tests/NYXGiftQueryTests.swift
+@@ -0,0 +1,74 @@
++import XCTest
++@testable import GGGiftsStudioCore
++
++final class NYXGiftQueryTests: XCTestCase {
++    private func own(_ key: String, title: String, order: Int, saved: Bool = true, pinned: Bool = false, date: Int32 = 0, price: Int64? = nil, total: Int32? = nil, kind: NYXGiftKind = .regular) -> NYXGiftItem {
++        return NYXGiftItem(id: "own:\(key)", title: title, kind: kind, priceStars: price, total: total, order: order, ownership: NYXGiftOwnership(referenceKey: key, savedToProfile: saved, pinnedToTop: pinned, date: date, fromName: nil))
++    }
++
++    func testSearchIsCaseInsensitiveAndMatchesAttributes() {
++        let a = NYXGiftItem(id: "gift:1", title: "Plush Pepe", kind: .unique, number: 7, attributes: ["Neon"], order: 0)
++        let b = NYXGiftItem(id: "gift:2", title: "Heart", kind: .regular, order: 1)
++        var filter = NYXGiftFilter()
++        filter.search = "pepe"
++        XCTAssertEqual(NYXGiftQuery.apply([a, b], filter: filter, sort: .name, favorites: []).map { $0.id }, ["gift:1"])
++        filter.search = "NEON"
++        XCTAssertEqual(NYXGiftQuery.apply([a, b], filter: filter, sort: .name, favorites: []).count, 1)
++        filter.search = "#7"
++        XCTAssertEqual(NYXGiftQuery.apply([a, b], filter: filter, sort: .name, favorites: []).count, 1)
++    }
++
++    func testVisibilityAndPinnedFilters() {
++        let shown = own("a", title: "A", order: 0)
++        let hidden = own("b", title: "B", order: 1, saved: false)
++        let pinned = own("c", title: "C", order: 2, pinned: true)
++        var filter = NYXGiftFilter()
++        filter.visibility = .hidden
++        XCTAssertEqual(NYXGiftQuery.apply([shown, hidden, pinned], filter: filter, sort: .name, favorites: []).map { $0.title }, ["B"])
++        filter.visibility = .shown
++        XCTAssertEqual(NYXGiftQuery.apply([shown, hidden, pinned], filter: filter, sort: .name, favorites: []).count, 2)
++        filter = NYXGiftFilter(onlyPinned: true)
++        XCTAssertEqual(NYXGiftQuery.apply([shown, hidden, pinned], filter: filter, sort: .name, favorites: []).map { $0.title }, ["C"])
++    }
++
++    func testFavoritesUseStorageKey() {
++        let a = own("k1", title: "A", order: 0)
++        let b = own("k2", title: "B", order: 1)
++        let filter = NYXGiftFilter(onlyFavorites: true)
++        XCTAssertEqual(NYXGiftQuery.apply([a, b], filter: filter, sort: .name, favorites: ["k2"]).map { $0.title }, ["B"])
++    }
++
++    func testNilValuesSortLastInBothDirections() {
++        let a = own("a", title: "A", order: 0, price: nil)
++        let b = own("b", title: "B", order: 1, price: 10)
++        let c = own("c", title: "C", order: 2, price: 5)
++        XCTAssertEqual(NYXGiftQuery.sorted([a, b, c], by: .priceLow).map { $0.title }, ["C", "B", "A"])
++        XCTAssertEqual(NYXGiftQuery.sorted([a, b, c], by: .priceHigh).map { $0.title }, ["B", "C", "A"])
++    }
++
++    func testNewestAndScarcestAreDeterministic() {
++        let a = own("a", title: "A", order: 0, date: 5, total: 100)
++        let b = own("b", title: "B", order: 1, date: 5, total: 10)
++        let c = own("c", title: "C", order: 2, date: 9, total: nil)
++        XCTAssertEqual(NYXGiftQuery.sorted([a, b, c], by: .newest).map { $0.title }, ["C", "A", "B"])
++        XCTAssertEqual(NYXGiftQuery.sorted([a, b, c], by: .scarcest).map { $0.title }, ["B", "A", "C"])
++    }
++
++    func testMove() {
++        XCTAssertEqual(NYXListMove.move([1, 2, 3, 4], from: 0, to: 2), [2, 3, 1, 4])
++        XCTAssertEqual(NYXListMove.move([1, 2, 3, 4], from: 3, to: 0), [4, 1, 2, 3])
++        XCTAssertEqual(NYXListMove.move([1, 2, 3], from: 5, to: 0), [1, 2, 3])
++        XCTAssertEqual(NYXListMove.move([1, 2, 3], from: 1, to: 1), [1, 2, 3])
++    }
++
++    func testCompositionVisibleKeysPutPrimaryFirstAndRespectMax() {
++        let composition = NYXProfileComposition(name: "x", giftKeys: ["a", "b", "c", "d"], primaryKey: "c", maxItems: 3)
++        XCTAssertEqual(composition.visibleKeys, ["c", "a", "b"])
++    }
++
++    func testCompositionClampsColumnsAndMax() {
++        let composition = NYXProfileComposition(name: "x", columns: 99, maxItems: 0)
++        XCTAssertEqual(composition.columns, 4)
++        XCTAssertEqual(composition.maxItems, 1)
++    }
++}
+diff --git a/Ghostgram/Features/GiftsStudio/Tests/NYXGiftsStoreTests.swift b/Ghostgram/Features/GiftsStudio/Tests/NYXGiftsStoreTests.swift
+new file mode 100644
+index 00000000..bb62d7c0
+--- /dev/null
++++ b/Ghostgram/Features/GiftsStudio/Tests/NYXGiftsStoreTests.swift
+@@ -0,0 +1,119 @@
++import XCTest
++@testable import GGGiftsStudioCore
++
++final class NYXGiftsStoreTests: XCTestCase {
++    private var directory: URL!
++
++    override func setUp() {
++        super.setUp()
++        self.directory = FileManager.default.temporaryDirectory.appendingPathComponent("nyx-gifts-tests-\(UUID().uuidString)", isDirectory: true)
++        try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true, attributes: nil)
++    }
++
++    override func tearDown() {
++        try? FileManager.default.removeItem(at: self.directory)
++        super.tearDown()
++    }
++
++    private var file: URL { return self.directory.appendingPathComponent("prefs.json") }
++
++    func testPersistsAcrossInstances() {
++        let store = NYXGiftsStore(fileURL: self.file)
++        store.update { $0.favorites = ["a", "b"]; $0.notes["a"] = "hello" }
++        let reloaded = NYXGiftsStore(fileURL: self.file)
++        XCTAssertEqual(reloaded.current.favorites, ["a", "b"])
++        XCTAssertEqual(reloaded.current.notes["a"], "hello")
++        XCTAssertNil(reloaded.loadIssue)
++    }
++
++    func testSecondSaveCreatesBackup() {
++        let store = NYXGiftsStore(fileURL: self.file)
++        store.update { $0.favorites = ["a"] }
++        store.update { $0.favorites = ["a", "b"] }
++        XCTAssertTrue(FileManager.default.fileExists(atPath: self.file.appendingPathExtension("bak").path))
++    }
++
++    func testCorruptMainFileRestoresBackup() throws {
++        let store = NYXGiftsStore(fileURL: self.file)
++        store.update { $0.favorites = ["a"] }
++        store.update { $0.favorites = ["a", "b"] }
++        try Data("not json".utf8).write(to: self.file)
++        let reloaded = NYXGiftsStore(fileURL: self.file)
++        XCTAssertEqual(reloaded.loadIssue, .restoredFromBackup)
++        XCTAssertEqual(reloaded.current.favorites, ["a"])
++    }
++
++    func testCorruptWithoutBackupResetsAndKeepsDamagedFile() throws {
++        try Data("garbage".utf8).write(to: self.file)
++        let store = NYXGiftsStore(fileURL: self.file)
++        XCTAssertEqual(store.loadIssue, .resetAfterCorruption)
++        XCTAssertEqual(store.current, NYXGiftsPrefs())
++        let names = (try? FileManager.default.contentsOfDirectory(atPath: self.directory.path)) ?? []
++        XCTAssertTrue(names.contains(where: { $0.contains("corrupt-") }))
++    }
++
++    func testNewerSchemaIsReadOnlyAndFileIsUntouched() throws {
++        var newer = NYXGiftsPrefs()
++        newer.schemaVersion = NYXGiftsPrefs.currentVersion + 1
++        newer.favorites = ["x"]
++        let encoder = JSONEncoder()
++        encoder.dateEncodingStrategy = .iso8601
++        let original = try encoder.encode(newer)
++        try original.write(to: self.file)
++        let store = NYXGiftsStore(fileURL: self.file)
++        XCTAssertEqual(store.loadIssue, .newerVersionReadOnly)
++        store.update { $0.favorites = ["changed"] }
++        XCTAssertEqual(try Data(contentsOf: self.file), original)
++    }
++
++    func testExportImportRoundTrip() throws {
++        let store = NYXGiftsStore(fileURL: self.file)
++        store.update { $0.favorites = ["a"]; $0.compositions = [NYXProfileComposition(name: "L", giftKeys: ["a"])] }
++        let data = try XCTUnwrap(store.exportData())
++        let other = NYXGiftsStore(fileURL: self.directory.appendingPathComponent("other.json"))
++        try other.importData(data)
++        XCTAssertEqual(other.current.favorites, ["a"])
++        XCTAssertEqual(other.current.compositions.first?.name, "L")
++    }
++
++    func testImportRejectsGarbageAndNewerVersions() throws {
++        let store = NYXGiftsStore(fileURL: self.file)
++        XCTAssertThrowsError(try store.importData(Data("nope".utf8))) { XCTAssertEqual($0 as? NYXGiftsImportError, .notValidData) }
++        var newer = NYXGiftsPrefs()
++        newer.schemaVersion = 99
++        let encoder = JSONEncoder()
++        encoder.dateEncodingStrategy = .iso8601
++        let data = try encoder.encode(newer)
++        XCTAssertThrowsError(try store.importData(data)) { XCTAssertEqual($0 as? NYXGiftsImportError, .newerVersion) }
++    }
++
++    func testLimitsAreEnforced() {
++        let store = NYXGiftsStore(fileURL: self.file)
++        store.update { prefs in
++            prefs.notes["a"] = String(repeating: "x", count: NYXGiftsPrefs.maxNoteLength + 50)
++            prefs.favorites = ["a", "a", "b"]
++            for i in 0..<(NYXGiftsPrefs.maxChangeLog + 20) {
++                prefs.changeLog.append(NYXChangeEntry(date: Date(timeIntervalSince1970: Double(i)), text: "\(i)"))
++            }
++        }
++        XCTAssertEqual(store.current.notes["a"]?.count, NYXGiftsPrefs.maxNoteLength)
++        XCTAssertEqual(store.current.favorites, ["a", "b"])
++        XCTAssertEqual(store.current.changeLog.count, NYXGiftsPrefs.maxChangeLog)
++        XCTAssertEqual(store.current.changeLog.last?.text, "\(NYXGiftsPrefs.maxChangeLog + 19)")
++    }
++
++    func testActiveCompositionClearedWhenDeleted() {
++        let store = NYXGiftsStore(fileURL: self.file)
++        let composition = NYXProfileComposition(name: "L")
++        store.update { $0.compositions = [composition]; $0.activeCompositionID = composition.id }
++        store.update { $0.compositions = [] }
++        XCTAssertNil(store.current.activeCompositionID)
++    }
++
++    func testResetKeepsBackupOfPreviousData() {
++        let store = NYXGiftsStore(fileURL: self.file)
++        store.update { $0.favorites = ["a"] }
++        store.resetAll()
++        XCTAssertTrue(store.current.favorites.isEmpty)
++    }
++}
+diff --git a/Ghostgram/Features/Sources/GGFeatures.swift b/Ghostgram/Features/Sources/GGFeatures.swift
+index eb1f1901..f3f1de8c 100644
+--- a/Ghostgram/Features/Sources/GGFeatures.swift
++++ b/Ghostgram/Features/Sources/GGFeatures.swift
+@@ -15,6 +15,7 @@ import GGVless
+ import GGProfileExport
+ import GGExtras
+ import GGRegDate
++import GGGiftsStudio
+ 
+ /// Aggregator of the feature modules, called from `AppDelegate` (see FOUNDATION_SPEC §2):
+ /// `GGCore.bootstrap` → `GGFeatures.registerAll()` → `GGCore.runGlobalMigrations()` →
+@@ -41,5 +42,7 @@ public enum GGFeatures {
+         GGExtrasModule.register()
+         // W7-RD2: «Дата регистрации».
+         // NYXGram: GGRegDateModule is not registered (see NYXGRAM_CHANGES.md).
++        // NYXGram: Gifts Studio (read-only catalog/collection, local layouts).
++        GGGiftsStudioModule.register()
+     }
+ }
+diff --git a/NYXGram/docs/GIFTS_STUDIO.md b/NYXGram/docs/GIFTS_STUDIO.md
+new file mode 100644
+index 00000000..3019ab66
+--- /dev/null
++++ b/NYXGram/docs/GIFTS_STUDIO.md
+@@ -0,0 +1,25 @@
++# Gifts Studio
++
++Status: **written, statically checked only (brace balance, forbidden-call script). Not compiled, not run, tests not executed** — there was no Swift toolchain in the authoring environment. Build it on a Mac or in CI first.
++
++## What it does
++- **Catalog** — Telegram's real gift catalog (`engine.payments.cachedStarGifts` / `keepStarGiftsUpdated`): search, filter by type/favorites, sort (newest, price, name, scarcest). Read-only.
++- **Collection** — your own gifts (`ProfileGiftsContext`): same search/filter/sort plus pinned/shown/hidden filters, details, compare two gifts (only fields Telegram provides).
++- **Layout** — local profile layouts (styles Classic / Minimal / Premium / Collector / Midnight / NYX Purple, columns, card size, titles, rarity, max items, primary gift, drag to reorder). Always labelled *local preview — not published to Telegram*.
++- **Data** — export (share sheet) / import (clipboard) of local settings, reset, local change history.
++- Local favorites and private notes (device only).
++
++## Changes to the real Telegram profile (each asks for confirmation)
++Show/hide a gift, pin/unpin a gift, apply the pinned order of a layout. Nothing else.
++
++## What it never does
++Buy, send, transfer, convert to Stars, withdraw, upgrade, resell or delete gifts. `Ghostgram/Features/GiftsStudio/Scripts/check-gifts-forbidden.sh` greps the sources for those calls.
++
++## Storage
++`Application Support/NYXGram/gifts-studio.json`, versioned (`schemaVersion`), written atomically, previous good file kept as `.bak`; a damaged file is restored from the backup or set aside as `.corrupt-<time>` (never silently deleted); a file from a newer version is left untouched and the app runs read-only. Import validates size, version and limits.
++
++## Known limits
++- Gift thumbnails are not rendered (a gift icon is shown); real animations/media loading is not implemented.
++- Collection items without a Telegram reference are not listed as manageable.
++- Pin limit comes from `stargifts_pinned_to_top_limit` (default 6).
++- UI strings are inline EN/RU (not in the Strings JSON pipeline).
+-- 
+2.43.0
+
