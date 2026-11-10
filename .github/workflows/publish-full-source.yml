@@ -1,6 +1,6 @@
 name: Publish full source
 
-# Builds the complete NYXGram source tree (Ghostgram 2a6b0827 + nyxgram2.patch from this repo)
+# Builds the complete NYXGram source tree (Ghostgram 2a6b0827 + the patches listed below, from this repo)
 # and pushes it to the branch "full-source" of THIS repository. Run it by hand: Actions > Publish full source > Run workflow.
 on:
   workflow_dispatch:
@@ -26,7 +26,10 @@ jobs:
           git clone https://github.com/ichmagmaus111/ghostgram.git src
           cd src
           git checkout "$BASE_COMMIT"
-          git apply --whitespace=nowarn ../overlay/nyxgram2.patch
+          # Patches are applied in this order. Add new ones (nyxgram3.patch, ...) to the list.
+          for p in nyxgram2.patch gifts-studio.patch; do
+            git apply --whitespace=nowarn "../overlay/$p"
+          done
           git config user.name "NYXGram"
           git config user.email "nyx@users.noreply.github.com"
           git add -A
